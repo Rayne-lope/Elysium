@@ -506,6 +506,7 @@ async function downloadCandidate(candidate) {
 }
 
 async function uploadCandidate(baseUrl, session, category, candidate) {
+  await delay(600);
   const bytes = await downloadCandidate(candidate);
   const extension = candidate.mimeType === 'image/jpeg' ? 'jpg' : candidate.mimeType.split('/')[1];
   const form = new FormData();
