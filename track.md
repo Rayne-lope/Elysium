@@ -24,6 +24,7 @@ Dokumen ini memantau status perkembangan pengembangan **Elysium Wallpaper Platfo
 | **Phase 11** | 🔴 `[ ]` | Production Release |
 | **Phase 12** | 🔴 `[ ]` | Post-MVP Improvements |
 | **Pixabay Importer** | 🟢 `[x]` | Curated Pixabay search, ingestion, and draft review workflow |
+| **Content Expansion 2026-08-12** | 🟢 `[x]` | 300 curated Wikimedia Commons wallpapers across Animals, Art, and Food |
 
 ---
 
@@ -31,6 +32,9 @@ Dokumen ini memantau status perkembangan pengembangan **Elysium Wallpaper Platfo
 
 ### 🟢 Special Phase — Pixabay Content Importer
 - [x] **Pixabay search, curated import, reusable ingestion, and draft review workflow**
+
+### 🟢 Special Phase — Content Expansion 2026-08-12
+- [x] **Add 300 curated wallpapers across Animals, Art, and Food**
 
 ### 🟢 Phase 0 — Foundation and Project Definition
 - [x] **0.1 Repository & Project Rule Initialization**
@@ -151,6 +155,16 @@ Dokumen ini memantau status perkembangan pengembangan **Elysium Wallpaper Platfo
 ---
 
 ## 📅 ACTIVITY LOG
+
+### [2026-08-12] - Wikimedia Commons Content Expansion Completed
+- **Pelaksana**: Codex
+- **Tindakan**:
+  - Menambahkan tepat 300 wallpaper terbit ke state lokal D1/R2: masing-masing 100 untuk kategori baru Animals, Art, dan Food.
+  - Mengkurasi Wikimedia Commons Featured/Quality images dengan lisensi public domain, CC0, CC BY, atau CC BY-SA serta menyimpan metadata kreator, sumber, dan lisensi.
+  - Menambahkan importer resumable `scripts/import-wikimedia.mjs`, validasi provenance sumber eksternal, seed kategori, unit test upload metadata, dan dokumentasi operator.
+  - Menghapus kandidat salah klasifikasi melalui lifecycle API sehingga record D1 dan objek R2 terkait sama-sama dibersihkan.
+  - Verifikasi: 300 source ID unik, 300 hash unik, seluruh item published dan memiliki master/empat preview key; halaman serta preview AVIF ketiga kategori merespons 200; importer rerun idempotent; 137 tests, Astro check, dan production build lulus.
+  - Perubahan konten hanya diterapkan ke state lokal karena Wrangler belum terautentikasi untuk deployment remote.
 
 ### [2026-08-10] - Phase 6 Performance and CDN Completed
 - **Pelaksana**: Codex

@@ -13,6 +13,7 @@
     "preview": "wrangler types && astro preview",
     "smoke:preview": "node scripts/smoke-preview.mjs",
     "audit:performance": "npm run build && node scripts/performance-audit.mjs",
+    "content:import:wikimedia": "node scripts/import-wikimedia.mjs",
     "astro": "astro",
     "check": "wrangler types && astro check",
     "test": "vitest run",

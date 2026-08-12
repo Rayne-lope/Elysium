@@ -16,6 +16,10 @@ export interface ParsedWallpaperUpload {
   categoryId?: string;
   tagIds: string[];
   sourceProvenance?: string;
+  sourceProvider?: string;
+  sourceExternalId?: string;
+  sourceUrl?: string;
+  creatorUrl?: string;
   licenseNote?: string;
   status: WallpaperStatus;
   isFeatured: boolean;
@@ -46,6 +50,18 @@ function dimension(form: FormData, name: string): number {
   return value;
 }
 
+function httpsUrl(form: FormData, name: string): string | undefined {
+  const value = text(form, name, 2048);
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password) throw new Error('invalid');
+    return url.href;
+  } catch {
+    throw new HttpError(`${name} must be a valid HTTPS URL`, 400, 'VALIDATION_ERROR');
+  }
+}
+
 async function providedPreviews(form: FormData, required: boolean): Promise<ProvidedPreviewSet | undefined> {
   const values = ['p480File', 'p960File', 'p1600File', 'fallbackFile'].map((name) => form.get(name));
   const present = values.filter((value) => value instanceof File).length;
@@ -67,7 +83,8 @@ async function providedPreviews(form: FormData, required: boolean): Promise<Prov
 export async function parseWallpaperUpload(form: FormData, fallbackTitle?: string): Promise<ParsedWallpaperUpload> {
   const allowedFields = new Set([
     'originalFile', 'title', 'description', 'creator', 'categoryId', 'tagIds', 'sourceProvenance',
-    'licenseNote', 'status', 'isFeatured', 'width', 'height', 'fileHash',
+    'sourceProvider', 'sourceExternalId', 'sourceUrl', 'creatorUrl', 'licenseNote', 'status',
+    'isFeatured', 'width', 'height', 'fileHash',
     'p480File', 'p960File', 'p1600File', 'fallbackFile',
   ]);
   const unexpected = [...form.keys()].find((key) => !allowedFields.has(key));
@@ -106,6 +123,10 @@ export async function parseWallpaperUpload(form: FormData, fallbackTitle?: strin
     categoryId: text(form, 'categoryId', 128),
     tagIds,
     sourceProvenance: text(form, 'sourceProvenance', 500),
+    sourceProvider: text(form, 'sourceProvider', 50)?.toLowerCase(),
+    sourceExternalId: text(form, 'sourceExternalId', 200),
+    sourceUrl: httpsUrl(form, 'sourceUrl'),
+    creatorUrl: httpsUrl(form, 'creatorUrl'),
     licenseNote: text(form, 'licenseNote', 500),
     status: statusValue as WallpaperStatus,
     isFeatured: featuredValue === 'true',

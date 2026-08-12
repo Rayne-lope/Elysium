@@ -1,6 +1,6 @@
 # Elysium Wallpaper Platform
 
-Astro SSR application deployed as a Cloudflare Worker with D1, R2, Cloudflare Images, and a server-side Pixabay curation workflow.
+Astro SSR application deployed as a Cloudflare Worker with D1, R2, Cloudflare Images, and source-aware wallpaper curation workflows.
 
 ## Runtime requirements
 
@@ -42,6 +42,7 @@ npm run preview          # Workerd-backed Astro preview
 npm run smoke:preview    # Bounded workerd health smoke on the current build
 npm run audit:performance # Build + workerd public delivery audit
 npm run deploy:dry-run   # Build, smoke preview, and package without deploying
+npm run content:import:wikimedia # Resume the curated Commons import against local dev
 ```
 
 Wrangler and the adapter read `CLOUDFLARE_ENV` when selecting an environment:
@@ -109,5 +110,5 @@ Review the migration list before every apply. These commands do not run as part 
 - Originals over 20 MB retain their bytes, use a bounded server-side header parser, and require server-verified browser WebP previews.
 - Publishing is blocked until required metadata and every original/preview object exists.
 
-See [Pixabay importer](docs/pixabay.md), [project rules](rules.md), and [execution tracking](track.md).
+See [Pixabay importer](docs/pixabay.md), [Wikimedia importer](docs/wikimedia.md), [project rules](rules.md), and [execution tracking](track.md).
 # Elysium

@@ -23,10 +23,10 @@ export class WallpaperLifecycleService {
       || !wallpaper.originalR2Key || requiredKeys(wallpaper).length !== 4) {
       throw new Error('Wallpaper metadata and all preview keys are required before publishing');
     }
-    if (wallpaper.sourceProvider === 'pixabay'
+    if (wallpaper.sourceProvider
       && (!wallpaper.sourceExternalId || !wallpaper.sourceUrl || !wallpaper.creator || !wallpaper.sourceProvenance
         || !wallpaper.licenseNote)) {
-      throw new Error('Pixabay provenance is incomplete');
+      throw new Error('External source provenance is incomplete');
     }
     const [originalExists, ...previewExists] = await Promise.all([
       R2StorageService.objectExists(bindings.originalBucket, wallpaper.originalR2Key),
