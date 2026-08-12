@@ -10,7 +10,7 @@
     {
       "binding": "DB",
       "database_name": "elysium_db",
-      "database_id": "local-elysium-db-id",
+      "database_id": "c4e9b289-25d1-43e4-87fc-5386fd250a6b",
       "migrations_dir": "db/migrations"
     }
   ],
