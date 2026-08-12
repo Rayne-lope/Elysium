@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
 
 const COMMONS_API = 'https://commons.wikimedia.org/w/api.php';
-const USER_AGENT = 'ElysiumWallpaperCurator/0.1 (local catalog curation)';
+const USER_AGENT = 'ElysiumWallpaperCurator/0.1 (https://github.com/elysium; admin@elysium.local)';
 const DEFAULT_BASE_URL = 'http://localhost:4321';
 const TARGET_PER_CATEGORY = boundedInteger(process.env.TARGET_PER_CATEGORY, 100, 1, 200);
 const MAX_SOURCE_BYTES = 15 * 1024 * 1024;
@@ -12,6 +12,82 @@ const COMMONS_REQUEST_DELAY_MS = 650;
 const DOWNLOAD_CONCURRENCY = 1;
 
 const CATEGORY_DEFINITIONS = [
+  {
+    id: 'cat_nature',
+    slug: 'nature',
+    name: 'Nature',
+    description: 'Serene landscapes, forests, flora, and natural sceneries.',
+    roots: [
+      'Category:Featured pictures of nature',
+      'Category:Featured pictures of landscapes',
+      'Category:Featured pictures of natural phenomena',
+      'Category:Quality images of landscapes',
+      'Category:Quality images of nature',
+    ],
+    blockedTitle: /\b(?:dead|eating|fossil|skeleton|skull)\b/i,
+    maxDepth: 2,
+  },
+  {
+    id: 'cat_space',
+    slug: 'space',
+    name: 'Space',
+    description: 'Galaxies, nebulas, stars, and cosmic phenomenon.',
+    roots: [
+      'Category:Featured pictures of astronomy',
+      'Category:Quality images of astronomy',
+    ],
+    blockedTitle: /\b(?:diagram|map|chart|orbit)\b/i,
+    maxDepth: 2,
+  },
+  {
+    id: 'cat_dark',
+    slug: 'dark',
+    name: 'Dark',
+    description: 'OLED black backgrounds, night photography, and moody dark aesthetic.',
+    roots: [
+      'Category:Featured night photography',
+      'Category:Featured pictures of astronomy',
+      'Category:Quality images of landscapes',
+    ],
+    blockedTitle: /\b(?:daylight|noon|bright|sunlight)\b/i,
+    maxDepth: 2,
+  },
+  {
+    id: 'cat_architecture',
+    slug: 'architecture',
+    name: 'Architecture',
+    description: 'Modern structures, urban photography, and interior design.',
+    roots: [
+      'Category:Featured pictures of architecture',
+      'Category:Quality images of architecture',
+    ],
+    blockedTitle: /\b(?:diagram|map|blueprint)\b/i,
+    maxDepth: 2,
+  },
+  {
+    id: 'cat_automotive',
+    slug: 'automotive',
+    name: 'Automotive',
+    description: 'High performance vehicles and conceptual transport.',
+    roots: [
+      'Category:Featured pictures of vehicles',
+      'Category:Quality images of vehicles',
+    ],
+    blockedTitle: /\b(?:crash|accident|wreck)\b/i,
+    maxDepth: 2,
+  },
+  {
+    id: 'cat_abstract',
+    slug: 'abstract',
+    name: 'Abstract',
+    description: 'Fluid dynamics, geometric shapes, and minimal compositions.',
+    roots: [
+      'Category:Featured pictures of patterns',
+      'Category:Quality images of patterns',
+    ],
+    blockedTitle: /\b(?:map|diagram)\b/i,
+    maxDepth: 2,
+  },
   {
     id: 'cat_animals',
     slug: 'animals',
@@ -398,10 +474,11 @@ async function loadExistingWallpapers(baseUrl, session) {
 async function downloadCandidate(candidate) {
   let response;
   let lastError;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
+      await delay(400);
       response = await fetch(candidate.assetUrl, {
-        signal: AbortSignal.timeout(20_000),
+        signal: AbortSignal.timeout(25_000),
         headers: { 'User-Agent': USER_AGENT, Accept: candidate.mimeType },
       });
       if (response.ok) break;
@@ -409,14 +486,12 @@ async function downloadCandidate(candidate) {
       const retryAfter = response.status === 429 ? Number(response.headers.get('retry-after')) : NaN;
       await response.body?.cancel().catch(() => undefined);
       response = undefined;
-      if (attempt === 0 && Number.isFinite(retryAfter) && retryAfter >= 0) {
-        await delay(Math.min(10_000, (retryAfter + 1) * 1_000));
-        continue;
-      }
+      const waitTime = Number.isFinite(retryAfter) && retryAfter >= 0 ? (retryAfter + 1) * 1000 : 2000 * (attempt + 1);
+      await delay(Math.min(15_000, waitTime));
     } catch (error) {
       lastError = error;
+      await delay(1200 * (attempt + 1));
     }
-    if (attempt === 0) await delay(1_000);
   }
   if (!response) throw lastError instanceof Error ? lastError : new Error('source download failed');
   if (!response.ok) throw new Error(`source returned HTTP ${response.status}`);
@@ -529,7 +604,15 @@ async function main() {
   const existingWallpapers = await loadExistingWallpapers(baseUrl, session);
   const report = {};
 
-  for (const definition of CATEGORY_DEFINITIONS) {
+  const categoryFilter = process.env.CATEGORIES
+    ? process.env.CATEGORIES.split(',').map((item) => item.trim().toLowerCase())
+    : null;
+
+  const targetDefinitions = categoryFilter
+    ? CATEGORY_DEFINITIONS.filter((definition) => categoryFilter.includes(definition.slug) || categoryFilter.includes(definition.name.toLowerCase()))
+    : CATEGORY_DEFINITIONS;
+
+  for (const definition of targetDefinitions) {
     const category = categories.get(definition.slug);
     report[definition.slug] = await importCategory(baseUrl, session, definition, category, existingWallpapers);
   }

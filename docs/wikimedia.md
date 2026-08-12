@@ -14,6 +14,12 @@ The target defaults to 100 published Wikimedia wallpapers per category. Override
 TARGET_PER_CATEGORY=150 npm run content:import:wikimedia
 ```
 
+To import specific categories (e.g. `dark`, `nature`, `space`), set `CATEGORIES`:
+
+```bash
+CATEGORIES=dark,nature,space TARGET_PER_CATEGORY=100 ELYSIUM_BASE_URL=http://127.0.0.1:4321 npm run content:import:wikimedia
+```
+
 The workflow is resumable. Existing Wikimedia page IDs and file hashes are skipped, while uploads still pass through the normal admin validation, preview generation, publication gate, D1 writes, and R2 lifecycle. `ADMIN_PASSWORD` is read from the environment or `.dev.vars`.
 
 Run against production only as an explicit operator action after authenticating Wrangler and backing up D1. Never remove source, creator, or license fields from imported records.
