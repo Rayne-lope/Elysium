@@ -1,0 +1,41 @@
+---
+interface Props {
+  title: string;
+  value: number | string;
+  subtitle?: string;
+  badge?: string;
+  badgeColor?: string;
+}
+
+const {
+  title,
+  value,
+  subtitle,
+  badge,
+  badgeColor = 'var(--accent-glow)'
+} = Astro.props;
+---
+
+<div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-md); padding: 1.5rem; display: flex; flex-direction: column; justify-content: space-between; box-shadow: 0 4px 12px rgba(0,0,0,0.2);">
+  <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+    <span style="font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">
+      {title}
+    </span>
+    {badge && (
+      <span style={`font-size: 0.75rem; padding: 0.2rem 0.6rem; border-radius: var(--radius-full); background: ${badgeColor}; font-weight: 600;`}>
+        {badge}
+      </span>
+    )}
+  </div>
+
+  <div>
+    <div style="font-family: var(--font-heading); font-size: 2.25rem; font-weight: 800; color: var(--text-primary); line-height: 1.1; margin-bottom: 0.25rem;">
+      {value}
+    </div>
+    {subtitle && (
+      <div style="font-size: 0.8rem; color: var(--text-muted);">
+        {subtitle}
+      </div>
+    )}
+  </div>
+</div>

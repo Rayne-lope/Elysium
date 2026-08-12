@@ -1,0 +1,180 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import ResponsiveWallpaperImage from '@/components/public/ResponsiveWallpaperImage.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Category, Tag, Wallpaper } from '@/types';
+
+const db = env.DB;
+const { id } = Astro.params;
+
+let wallpaper: Wallpaper | null = null;
+let categories: Category[] = [];
+let tags: Tag[] = [];
+let selectedTagIds = new Set<string>();
+
+if (db && id) {
+  try {
+    wallpaper = await DBService.getWallpaperById(db, id);
+    [categories, tags] = await Promise.all([DBService.getCategories(db), DBService.getTags(db)]);
+    selectedTagIds = new Set((await DBService.getTagsByWallpaperId(db, id)).map((tag) => tag.id));
+  } catch (e) {
+    console.error('Failed to load wallpaper:', e);
+  }
+}
+---
+
+<AdminLayout title="Edit Wallpaper | Admin" activeTab="wallpapers">
+  <div style="max-width: 700px; margin: 0 auto;">
+    
+    {!wallpaper ? (
+      <div style="padding: 4rem 1rem; text-align: center; color: var(--text-muted);">
+        <p style="font-size: 1.25rem;">Wallpaper not found</p>
+        <a href="/admin/wallpapers" style="color: var(--accent-primary);">Back to list</a>
+      </div>
+    ) : (
+      <div>
+        <div style="margin-bottom: 2rem;">
+          <a href="/admin/wallpapers" style="color: var(--text-secondary); text-decoration: none; font-size: 0.9rem;">&larr; Back to Wallpapers</a>
+          <h1 style="font-family: var(--font-heading); font-size: 2rem; font-weight: 800; margin-top: 0.5rem;">
+            Edit Wallpaper Metadata
+          </h1>
+          <p style="color: var(--text-secondary); font-size: 0.9rem;">
+            Master original file in R2 remains untouched when editing metadata.
+          </p>
+        </div>
+
+        <div id="error-alert" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 1rem; border-radius: var(--radius-sm); margin-bottom: 1.5rem;"></div>
+
+        <form id="edit-form" style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+          <ResponsiveWallpaperImage
+            wallpaper={wallpaper}
+            alt={`Preview of ${wallpaper.title}`}
+            sizes="min(100vw - 4rem, 636px)"
+            pictureClass="admin-edit-picture"
+            imageClass="admin-edit-image"
+          />
+          
+          <div>
+            <label for="title" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Title</label>
+            <input type="text" id="title" name="title" value={wallpaper.title} required style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);" />
+          </div>
+
+          <fieldset style="border: 0; display: grid; gap: 0.65rem;">
+            <legend style="font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Tags</legend>
+            <div style="display:flex; flex-wrap:wrap; gap:.5rem;">
+              {tags.map((tag) => (
+                <label style="display:inline-flex; align-items:center; gap:.4rem; padding:.45rem .6rem; background:var(--bg-surface-elevated); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); font-size:.82rem;">
+                  <input type="checkbox" name="tagIds" value={tag.id} checked={selectedTagIds.has(tag.id)} />
+                  {tag.name}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div>
+            <label for="categoryId" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Category</label>
+            <select id="categoryId" name="categoryId" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);">
+              <option value="">Select Category...</option>
+              {categories.map((cat) => (
+                <option value={cat.id} selected={cat.id === wallpaper.categoryId}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label for="description" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Description</label>
+            <textarea id="description" name="description" rows="3" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);">{wallpaper.description || ''}</textarea>
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div>
+              <label for="status" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Publish Status</label>
+              <select id="status" name="status" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);">
+                <option value="published" selected={wallpaper.status === 'published'}>Published</option>
+                <option value="draft" selected={wallpaper.status === 'draft'}>Draft</option>
+              </select>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1.5rem;">
+              <input type="checkbox" id="isFeatured" name="isFeatured" checked={wallpaper.isFeatured} style="width: 1.2rem; height: 1.2rem; cursor: pointer;" />
+              <label for="isFeatured" style="font-weight: 600; cursor: pointer; font-size: 0.9rem;">Feature on Homepage</label>
+            </div>
+          </div>
+
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 1rem; font-size: 0.85rem; color: var(--text-secondary);">
+            <div><strong>Master Key:</strong> {wallpaper.originalR2Key}</div>
+            <div><strong>Dimensions:</strong> {wallpaper.width} &times; {wallpaper.height} ({wallpaper.resolutionLabel || 'Custom'})</div>
+            <div><strong>File hash:</strong> {wallpaper.fileHash || 'Unavailable'}</div>
+            <div><strong>Source:</strong> {wallpaper.sourceProvider || 'Manual upload'} {wallpaper.sourceExternalId ? `#${wallpaper.sourceExternalId}` : ''}</div>
+            {wallpaper.sourceUrl && <div><strong>Source URL:</strong> <a href={wallpaper.sourceUrl} target="_blank" rel="noreferrer" style="color:var(--accent-primary);">Open provenance record</a></div>}
+            {wallpaper.creatorUrl && <div><strong>Creator:</strong> <a href={wallpaper.creatorUrl} target="_blank" rel="noreferrer" style="color:var(--accent-primary);">{wallpaper.creator}</a></div>}
+            {wallpaper.licenseNote && <div><strong>License note:</strong> {wallpaper.licenseNote}</div>}
+          </div>
+
+          <button type="submit" id="submit-btn" style="padding: 0.875rem; background: var(--accent-primary); color: #ffffff; border: none; border-radius: var(--radius-sm); font-weight: 700; font-size: 1rem; cursor: pointer; transition: var(--transition-fast);">
+            Save Metadata Changes
+          </button>
+        </form>
+      </div>
+    )}
+  </div>
+
+  <script>
+    const form = document.getElementById('edit-form') as HTMLFormElement;
+    const errorAlert = document.getElementById('error-alert') as HTMLDivElement;
+    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
+    const wallpaperId = window.location.pathname.split('/')[3];
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorAlert.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Saving...';
+
+      try {
+        const formData = new FormData(form);
+        const payload = {
+          title: formData.get('title'),
+          description: formData.get('description'),
+          categoryId: formData.get('categoryId'),
+          status: formData.get('status'),
+          isFeatured: formData.get('isFeatured') === 'on',
+          tagIds: formData.getAll('tagIds'),
+        };
+
+        const res = await fetch(`/api/admin/wallpapers/${wallpaperId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+
+        const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+        if (res.ok && data.success) {
+          window.location.href = '/admin/wallpapers';
+        } else {
+          errorAlert.innerText = data.error || 'Failed to save changes';
+          errorAlert.style.display = 'block';
+        }
+      } catch (error) {
+        errorAlert.innerText = `Network error: ${error instanceof Error ? error.message : 'Update failed'}`;
+        errorAlert.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Save Metadata Changes';
+      }
+    });
+  </script>
+</AdminLayout>
+
+<style>
+  :global(.admin-edit-picture) { display: block; width: 100%; }
+  :global(.admin-edit-image) {
+    width: 100%;
+    height: auto;
+    max-height: 360px;
+    object-fit: contain;
+    background: var(--bg-primary);
+    border-radius: var(--radius-md);
+  }
+</style>

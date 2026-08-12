@@ -1,0 +1,279 @@
+---
+import type { Wallpaper } from '@/types';
+import ResponsiveWallpaperImage from './ResponsiveWallpaperImage.astro';
+import { CARD_IMAGE_SIZES } from '@/lib/preview-assets';
+
+interface Props {
+  wallpaper: Wallpaper;
+  priority?: boolean;
+  appearance?: 'overlay' | 'editorial';
+  index?: number;
+}
+
+const {
+  wallpaper,
+  priority = false,
+  appearance = 'overlay',
+  index = 0,
+} = Astro.props;
+
+const aspectRatio = wallpaper.aspectRatio
+  || (wallpaper.width && wallpaper.height ? wallpaper.width / wallpaper.height : 1.78);
+---
+
+{appearance === 'editorial' ? (
+  <article class="editorial-card" data-orientation={wallpaper.orientation} data-reveal>
+    <a href={`/wallpaper/${wallpaper.slug}`} class="editorial-card__link">
+      <div
+        class="editorial-card__image"
+        style={`aspect-ratio: ${aspectRatio};`}
+        data-image-reveal
+      >
+        <ResponsiveWallpaperImage
+          wallpaper={wallpaper}
+          sizes="(max-width: 640px) 100vw, (max-width: 960px) 50vw, 25vw"
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : 'auto'}
+          pictureClass="editorial-picture"
+          imageClass="editorial-image"
+        />
+      </div>
+
+      <div class="editorial-card__meta">
+        <span class="editorial-card__number">{String(index + 1).padStart(2, '0')}</span>
+        <div>
+          <h3>{wallpaper.title}</h3>
+          <p>{wallpaper.width} × {wallpaper.height} · {wallpaper.orientation}</p>
+        </div>
+        <span class="editorial-card__resolution">{wallpaper.resolutionLabel || wallpaper.format.toUpperCase()}</span>
+      </div>
+    </a>
+  </article>
+) : (
+  <div class="wallpaper-card">
+    <a href={`/wallpaper/${wallpaper.slug}`} class="card-link">
+      <div class="image-wrapper" style={`aspect-ratio: ${aspectRatio};`}>
+        <ResponsiveWallpaperImage
+          wallpaper={wallpaper}
+          sizes={CARD_IMAGE_SIZES}
+          loading={priority ? 'eager' : 'lazy'}
+          fetchPriority={priority ? 'high' : 'auto'}
+          pictureClass="card-picture"
+          imageClass="card-img"
+        />
+
+        <div class="card-overlay">
+          <div class="overlay-top">
+            {wallpaper.resolutionLabel && (
+              <span class="resolution-badge">{wallpaper.resolutionLabel}</span>
+            )}
+            <span class="orientation-badge">{wallpaper.orientation}</span>
+          </div>
+
+          <div class="overlay-bottom">
+            <h2 class="wallpaper-title">{wallpaper.title}</h2>
+            <span class="dimensions-text">{wallpaper.width} × {wallpaper.height} px</span>
+          </div>
+        </div>
+      </div>
+    </a>
+  </div>
+)}
+
+<style>
+  .wallpaper-card {
+    align-self: start;
+    background: transparent;
+    border-radius: var(--radius-lg);
+    break-inside: avoid;
+    margin-bottom: 1.5rem;
+    overflow: hidden;
+    position: relative;
+    transition: var(--transition-normal);
+  }
+
+  .card-link {
+    border-radius: var(--radius-lg);
+    color: inherit;
+    display: block;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .image-wrapper {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    position: relative;
+    transition: var(--transition-normal);
+    width: 100%;
+  }
+
+  .wallpaper-card:hover .image-wrapper {
+    border-color: var(--border-medium);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+  }
+
+  :global(.card-picture) {
+    height: 100%;
+    inset: 0;
+    position: absolute;
+    width: 100%;
+  }
+
+  :global(.card-img) {
+    height: 100%;
+    inset: 0;
+    object-fit: cover;
+    position: absolute;
+    transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+    width: 100%;
+  }
+
+  .wallpaper-card:hover :global(.card-img) {
+    transform: scale(1.05);
+  }
+
+  .card-overlay {
+    background: linear-gradient(to top, rgba(10, 12, 16, 0.92) 0%, rgba(10, 12, 16, 0.2) 50%, transparent 100%);
+    display: flex;
+    flex-direction: column;
+    inset: 0;
+    justify-content: space-between;
+    opacity: 0.92;
+    padding: 1.15rem;
+    position: absolute;
+    transition: opacity 0.25s ease;
+  }
+
+  .wallpaper-card:hover .card-overlay {
+    opacity: 1;
+  }
+
+  .overlay-top {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .resolution-badge {
+    background: var(--accent-glow);
+    border: 1px solid rgba(99, 102, 241, 0.4);
+    border-radius: var(--radius-full);
+    color: var(--accent-text);
+    font-size: 0.75rem;
+    font-weight: 700;
+    padding: 0.25rem 0.6rem;
+    text-transform: uppercase;
+  }
+
+  .orientation-badge {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.55);
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0.25rem 0.6rem;
+    text-transform: capitalize;
+  }
+
+  .wallpaper-title {
+    color: #ffffff;
+    font-family: var(--font-heading);
+    font-size: 1.15rem;
+    font-weight: 800;
+    line-height: 1.25;
+    margin-bottom: 0.2rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+  }
+
+  .dimensions-text {
+    color: rgba(255, 255, 255, 0.75);
+    font-size: 0.825rem;
+    font-weight: 500;
+  }
+
+  .editorial-card {
+    min-width: 0;
+  }
+
+  .editorial-card__link {
+    display: block;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .editorial-card__link:active {
+    transform: scale(0.99);
+  }
+
+  .editorial-card__image {
+    background: var(--luxury-paper-deep);
+    overflow: hidden;
+    position: relative;
+    width: 100%;
+  }
+
+  :global(.editorial-picture) {
+    display: block;
+    height: 100%;
+    width: 100%;
+  }
+
+  :global(.editorial-image) {
+    height: 100%;
+    object-fit: cover;
+    transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+    width: 100%;
+  }
+
+  .editorial-card__link:hover :global(.editorial-image) {
+    transform: scale(1.03);
+  }
+
+  .editorial-card__meta {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    gap: 0.75rem;
+    grid-template-columns: 2rem 1fr auto;
+    padding: 0.8rem 0 1.1rem;
+  }
+
+  .editorial-card__number,
+  .editorial-card__resolution,
+  .editorial-card__meta p {
+    color: var(--luxury-muted);
+    font-size: 0.57rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .editorial-card__meta h3 {
+    font-size: clamp(1rem, 1.35vw, 1.35rem);
+    font-stretch: 108%;
+    font-weight: 560;
+    letter-spacing: -0.035em;
+    line-height: 1.05;
+  }
+
+  .editorial-card__meta p {
+    line-height: 1.4;
+    margin-top: 0.35rem;
+  }
+
+  .editorial-card__resolution {
+    text-align: right;
+  }
+
+  @media (max-width: 640px) {
+    .editorial-card__meta {
+      grid-template-columns: 1.75rem 1fr auto;
+    }
+  }
+</style>

@@ -1,0 +1,207 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Category } from '@/types';
+
+const db = env.DB;
+let categories: Category[] = [];
+
+if (db) {
+  try {
+    categories = await DBService.getCategories(db);
+  } catch (e) {
+    console.error('Failed to load categories:', e);
+  }
+}
+
+const origin = Astro.url.origin;
+const bookmarkletCode = `javascript:(function(){var E='${origin}',M='elysium-curator-modal';var ex=document.getElementById(M);if(ex)ex.remove();var imgs=[],urls=new Set();document.querySelectorAll('img').forEach(function(img){var src=img.src||'';if(!src.includes('pinimg.com')&&img.srcset){var p=img.srcset.split(',');var last=p[p.length-1]||'';src=last.trim().split(' ')[0]||'';}if(src.includes('pinimg.com')){var orig=src.replace(/\\/(?:236x|474x|736x|\\d+x\\d*)\\//i,'/originals/');if(!urls.has(orig)){urls.add(orig);var alt=img.alt||img.getAttribute('aria-label')||'Pinterest Artwork';imgs.push({orig:orig,thumb:src,title:alt});}}});if(imgs.length===0){alert('Elysium Curator: Tidak ada gambar Pinterest yang ditemukan di halaman ini. Silakan scroll ke bawah terlebih dahulu!');return;}var m=document.createElement('div');m.id=M;m.style.cssText='position:fixed;top:20px;right:20px;width:440px;max-height:85vh;background:#0f0f11;color:#f9f8f6;border:1px solid #2d2d35;border-radius:12px;box-shadow:0 20px 50px rgba(0,0,0,0.7);z-index:9999999;font-family:sans-serif;display:flex;flex-direction:column;overflow:hidden;';var h='<div style="padding:16px 20px;border-bottom:1px solid #2d2d35;display:flex;justify-content:space-between;align-items:center;background:#16161a;"><div><h3 style="margin:0;font-size:15px;font-weight:800;color:#fff;">ELYSIUM <span style="font-size:10px;background:#3b82f6;color:#fff;padding:2px 6px;border-radius:99px;">CURATOR</span></h3><p style="margin:4px 0 0;font-size:11px;color:#8a8a98;">Berhasil mendeteksi '+imgs.length+' master HD</p></div><button id="el-close" style="background:none;border:none;color:#8a8a98;font-size:20px;cursor:pointer;">&times;</button></div>';h+='<div style="flex:1;overflow-y:auto;padding:14px;display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">';imgs.forEach(function(item){h+='<label style="position:relative;border:1px solid #2d2d35;border-radius:8px;overflow:hidden;background:#1a1a20;cursor:pointer;display:block;"><input type="checkbox" class="el-check" data-url="'+item.orig+'" checked style="position:absolute;top:8px;left:8px;z-index:2;width:18px;height:18px;" /><img src="'+item.thumb+'" style="width:100%;height:120px;object-fit:cover;display:block;" /><div style="padding:6px 8px;font-size:10px;color:#a1a1aa;">HD Master</div></label>';});h+='</div><div style="padding:14px 20px;border-top:1px solid #2d2d35;background:#16161a;display:flex;justify-content:space-between;align-items:center;"><button id="el-all" style="background:none;border:none;color:#3b82f6;font-size:12px;font-weight:600;cursor:pointer;">Pilih Semua</button><button id="el-send" style="background:#3b82f6;color:#fff;border:none;padding:8px 16px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">Kirim ke Elysium &rarr;</button></div>';m.innerHTML=h;document.body.appendChild(m);document.getElementById('el-close').onclick=function(){m.remove();};document.getElementById('el-all').onclick=function(){var c=m.querySelectorAll('.el-check');var all=Array.from(c).every(function(x){return x.checked;});c.forEach(function(x){x.checked=!all;});};document.getElementById('el-send').onclick=function(){var c=Array.from(m.querySelectorAll('.el-check:checked'));if(!c.length){alert('Pilih minimal 1 gambar!');return;}var u=c.map(function(x){return x.getAttribute('data-url');});var btn=document.getElementById('el-send');btn.disabled=true;btn.textContent='Mengirim ke Elysium...';var f=document.createElement('form');f.method='POST';f.action=E+'/api/admin/pinterest/import';f.target='_blank';var inp=document.createElement('input');inp.type='hidden';inp.name='payload';inp.value=JSON.stringify({urls:u});f.appendChild(inp);document.body.appendChild(f);f.submit();setTimeout(function(){f.remove();m.remove();},1000);};})();`;
+---
+
+<AdminLayout title="Pinterest Curator | Admin" activeTab="wallpapers">
+  <div style="max-width: 900px; margin: 0 auto;">
+
+    <!-- Back & Heading -->
+    <div style="margin-bottom: 2rem;">
+      <a href="/admin/dashboard" style="color: var(--text-secondary); text-decoration: none; font-size: 0.9rem;">&larr; Back to Dashboard</a>
+      <h1 style="font-family: var(--font-heading); font-size: 2.25rem; font-weight: 800; margin-top: 0.5rem;">
+        Pinterest Curator Workflow
+      </h1>
+      <p style="color: var(--text-secondary); font-size: 0.95rem;">
+        Curate high-resolution wallpapers directly from Pinterest without API limits or anti-bot restrictions.
+      </p>
+    </div>
+
+    <!-- Installation & Setup Card -->
+    <div style="background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(59, 130, 246, 0.1) 100%); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 2rem; margin-bottom: 2.5rem; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+      <div style="display: flex; align-items: flex-start; gap: 1.5rem;">
+        <div style="font-size: 2.5rem;">📌</div>
+        <div>
+          <h2 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">
+            Step 1: Install Elysium Pinterest Bookmarklet
+          </h2>
+          <p style="color: var(--text-secondary); font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.25rem;">
+            Drag the button below directly to your browser's <strong>Bookmarks Bar</strong>. When you browse any Pinterest search or board page, click the bookmarklet to open the floating curator modal!
+          </p>
+
+          <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+            <a
+              href={bookmarkletCode}
+              onclick="return false;"
+              style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1.25rem; background: #3b82f6; color: #ffffff; font-weight: 700; border-radius: var(--radius-full); text-decoration: none; box-shadow: 0 4px 14px rgba(59,130,246,0.4); cursor: grab;"
+            >
+              <span>📌 Curate to Elysium</span>
+            </a>
+            <button
+              type="button"
+              id="copy-code-btn"
+              data-code={bookmarkletCode}
+              style="padding: 0.75rem 1rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: var(--radius-full); font-size: 0.85rem; font-weight: 600; cursor: pointer;"
+            >
+              📋 Copy Code
+            </button>
+          </div>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.75rem;">
+            *Jika Bookmarks Bar belum terlihat di browser, tekan <strong>Cmd + Shift + B</strong> (Mac) atau <strong>Ctrl + Shift + B</strong> (Windows) untuk menampilkannya.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Manual Bulk URL Import Form -->
+    <div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 2rem;">
+      <h2 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">
+        Step 2: Or Paste Pinterest Image URLs Manually
+      </h2>
+      <p style="color: var(--text-secondary); font-size: 0.88rem; margin-bottom: 1.5rem;">
+        Paste Pinterest CDN image links (one URL per line). Low-res URLs like <code>/236x/</code> or <code>/736x/</code> will automatically be upgraded to <code>/originals/</code> high-res master files.
+      </p>
+
+      <form id="pinterest-url-form" style="display: flex; flex-direction: column; gap: 1.25rem;">
+        <div>
+          <label for="url-input" style="display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.4rem;">
+            Pinterest Image URLs (One per line)
+          </label>
+          <textarea
+            id="url-input"
+            rows="6"
+            placeholder="https://i.pinimg.com/736x/ab/cd/ef/example1.jpg&#10;https://i.pinimg.com/236x/11/22/33/example2.png"
+            style="width: 100%; padding: 0.85rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); color: var(--text-primary); font-family: monospace; font-size: 0.85rem;"
+          ></textarea>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div>
+            <label for="category-select" style="display: block; font-weight: 600; font-size: 0.88rem; margin-bottom: 0.4rem;">
+              Assign Category
+            </label>
+            <select id="category-select" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);">
+              <option value="">Unassigned</option>
+              {categories.map((cat) => (
+                <option value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label for="tags-input" style="display: block; font-weight: 600; font-size: 0.88rem; margin-bottom: 0.4rem;">
+              Additional Tags (Comma separated)
+            </label>
+            <input
+              id="tags-input"
+              type="text"
+              placeholder="aesthetic, 4k, minimal"
+              style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);"
+            />
+          </div>
+        </div>
+
+        <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
+          <button
+            type="submit"
+            id="submit-btn"
+            style="padding: 0.85rem 1.75rem; background: var(--accent-primary); color: #ffffff; font-weight: 700; border: none; border-radius: var(--radius-sm); cursor: pointer; display: inline-flex; align-items: center; gap: 0.5rem;"
+          >
+            <span>Import Wallpapers &rarr;</span>
+          </button>
+        </div>
+      </form>
+
+      <div id="status-box" style="display: none; margin-top: 1.5rem; padding: 1rem; border-radius: var(--radius-md); font-size: 0.9rem;"></div>
+    </div>
+
+  </div>
+
+  <script>
+    const form = document.getElementById('pinterest-url-form') as HTMLFormElement | null;
+    const textarea = document.getElementById('url-input') as HTMLTextAreaElement | null;
+    const categorySelect = document.getElementById('category-select') as HTMLSelectElement | null;
+    const tagsInput = document.getElementById('tags-input') as HTMLInputElement | null;
+    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement | null;
+    const statusBox = document.getElementById('status-box') as HTMLDivElement | null;
+    const copyBtn = document.getElementById('copy-code-btn') as HTMLButtonElement | null;
+    copyBtn?.addEventListener('click', () => {
+      const code = copyBtn.getAttribute('data-code');
+      if (code) {
+        navigator.clipboard.writeText(code);
+        copyBtn.textContent = '✓ Copied!';
+        setTimeout(() => { copyBtn.textContent = '📋 Copy Code'; }, 2000);
+      }
+    });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!textarea || !categorySelect || !tagsInput || !submitBtn || !statusBox) return;
+
+      const rawText = textarea.value.trim();
+      if (!rawText) {
+        alert('Please paste at least one Pinterest image URL!');
+        return;
+      }
+
+      const urls = rawText
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+
+      const defaultCategoryId = categorySelect.value || undefined;
+      const additionalTags = tagsInput.value.split(',').map((t) => t.trim()).filter(Boolean);
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Importing...';
+      statusBox.style.display = 'block';
+      statusBox.style.background = 'rgba(59, 130, 246, 0.15)';
+      statusBox.style.color = '#93c5fd';
+      statusBox.style.border = '1px solid rgba(59, 130, 246, 0.3)';
+      statusBox.textContent = `Processing ${urls.length} Pinterest wallpapers...`;
+
+      try {
+        const res = await fetch('/api/admin/pinterest/import', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ urls, defaultCategoryId, additionalTags }),
+        });
+
+        const data = (await res.json()) as { success?: boolean; data?: { imported: number }; error?: string };
+        if (res.ok && data.success && data.data) {
+          statusBox.style.background = 'rgba(34, 197, 94, 0.15)';
+          statusBox.style.color = '#86efac';
+          statusBox.style.border = '1px solid rgba(34, 197, 94, 0.3)';
+          statusBox.innerHTML = `Successfully imported ${data.data.imported} wallpapers to Drafts! <a href="/admin/wallpapers?status=draft" style="color: #ffffff; text-decoration: underline; font-weight: 700;">View Draft Catalog &rarr;</a>`;
+          textarea.value = '';
+        } else {
+          throw new Error(data.error || 'Import failed');
+        }
+      } catch (err: any) {
+        statusBox.style.background = 'rgba(239, 68, 68, 0.15)';
+        statusBox.style.color = '#fca5a5';
+        statusBox.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+        statusBox.textContent = err.message || 'Import failed';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Import Wallpapers \u2192';
+      }
+    });
+  </script>
+</AdminLayout>

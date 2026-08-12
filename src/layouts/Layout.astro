@@ -1,0 +1,66 @@
+---
+import '@/styles/global.css';
+import Header from '@/components/Header.astro';
+import Footer from '@/components/Footer.astro';
+import type { PublicSurface } from '@/types';
+
+interface Props {
+  title?: string;
+  description?: string;
+  image?: string;
+  activePage?: string;
+  surface?: PublicSurface;
+}
+
+const {
+  title = 'Elysium | High-Resolution Wallpapers',
+  description = 'Curated high-resolution wallpapers. Download untouched original master files instantly.',
+  image = '/og-default.jpg',
+  activePage = 'home',
+  surface = 'default',
+} = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  {surface === 'default' && (
+    <>
+      <link rel="preload" href="/fonts/plus-jakarta-sans-latin-v12.woff2" as="font" type="font/woff2" crossorigin />
+      <link rel="preload" href="/fonts/outfit-latin-v15.woff2" as="font" type="font/woff2" crossorigin />
+    </>
+  )}
+  
+  <!-- Primary Meta Tags -->
+  <title>{title}</title>
+  <meta name="title" content={title} />
+  <meta name="description" content={description} />
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:image" content={image} />
+
+  <!-- Twitter -->
+  <meta property="twitter:card" content="summary_large_image" />
+  <meta property="twitter:title" content={title} />
+  <meta property="twitter:description" content={description} />
+  <meta property="twitter:image" content={image} />
+</head>
+<body
+  data-surface={surface}
+  style="display: flex; flex-direction: column; min-height: 100vh;"
+>
+  <Header activePage={activePage} surface={surface} />
+
+  <main style="flex: 1;">
+    <slot />
+  </main>
+
+  <Footer surface={surface} />
+</body>
+</html>

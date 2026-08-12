@@ -1,0 +1,1181 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import 'lenis/dist/lenis.css';
+import { env } from 'cloudflare:workers';
+import Layout from '@/layouts/Layout.astro';
+import WallpaperCard from '@/components/public/WallpaperCard.astro';
+import ResponsiveWallpaperImage from '@/components/public/ResponsiveWallpaperImage.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Wallpaper, Category, Tag } from '@/types';
+import { SecurityService } from '@worker/services/security.service';
+import { DETAIL_IMAGE_SIZES, responsivePreviewSources } from '@/lib/preview-assets';
+
+const db = env.DB;
+const { slug } = Astro.params;
+
+if (!slug) {
+  return Astro.rewrite('/404');
+}
+
+if (!db) {
+  return Astro.rewrite('/500');
+}
+
+let wallpaper: Wallpaper | null = null;
+let category: Category | null = null;
+let tags: Tag[] = [];
+let relatedWallpapers: Wallpaper[] = [];
+
+try {
+  wallpaper = await DBService.getWallpaperBySlug(db, slug);
+
+  if (!wallpaper || wallpaper.status !== 'published') {
+    return Astro.rewrite('/404');
+  }
+
+  if (wallpaper.categoryId) {
+    const categories = await DBService.getCategories(db);
+    category = categories.find((item) => item.id === wallpaper?.categoryId) || null;
+  }
+
+  tags = await DBService.getTagsByWallpaperId(db, wallpaper.id);
+
+  const relatedResult = await DBService.listWallpapers(db, {
+    status: 'published',
+    categorySlug: category?.slug,
+    orientation: wallpaper.orientation,
+    limit: 5,
+  });
+
+  relatedWallpapers = relatedResult.wallpapers
+    .filter((item) => item.id !== wallpaper?.id)
+    .slice(0, 4);
+} catch (error) {
+  console.error('Failed to load wallpaper detail:', error);
+  return Astro.rewrite('/500');
+}
+
+const previewSources = responsivePreviewSources(wallpaper, env.CDN_BASE_URL);
+const previewUrl = previewSources?.fallbackUrl;
+const fileSizeMb = (wallpaper.fileSize / (1024 * 1024)).toFixed(2);
+const downloadToken = await SecurityService.generateDownloadToken(wallpaper.id, env.AUTH_SECRET || '');
+const downloadUrl = `/api/wallpapers/${wallpaper.id}/download?token=${encodeURIComponent(downloadToken)}`;
+const aspectRatio = wallpaper.aspectRatio || wallpaper.width / wallpaper.height;
+const aspectRatioLabel = aspectRatio.toFixed(2).replace(/\.00$/, '');
+const recordId = wallpaper.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
+const archiveCode = `ELY-${wallpaper.orientation.slice(0, 1).toUpperCase()}-${recordId}`;
+const publishedDate = new Intl.DateTimeFormat('en-GB', {
+  day: '2-digit',
+  month: 'short',
+  year: 'numeric',
+}).format(new Date(wallpaper.publishedAt || wallpaper.createdAt));
+const description = wallpaper.description
+  || 'A selected high-resolution master from the Elysium visual archive.';
+
+Astro.response.headers.set('Cache-Control', 'private, no-store');
+---
+
+<Layout
+  title={`${wallpaper.title} (${wallpaper.resolutionLabel || 'High-Res'} Master Wallpaper) | Elysium`}
+  description={`Download the untouched ${wallpaper.width}x${wallpaper.height} original master file for ${wallpaper.title}.`}
+  image={previewUrl}
+  activePage="explore"
+  surface="detail-luxury"
+>
+  <article class="detail-page">
+    <div class="detail-frame">
+      <nav class="record-breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/">Archive</a></li>
+          {category && <li><a href={`/explore?category=${category.slug}`}>{category.name}</a></li>}
+          <li aria-current="page">{wallpaper.title}</li>
+        </ol>
+        <a href="/explore" class="record-breadcrumb__return">Return to index</a>
+      </nav>
+
+      <header class="record-header" data-reveal>
+        <div class="record-header__index">
+          <p>Archive record</p>
+          <dl>
+            <div>
+              <dt>Catalogue no.</dt>
+              <dd>{archiveCode}</dd>
+            </div>
+            <div>
+              <dt>Published</dt>
+              <dd>{publishedDate}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <h1>{wallpaper.title}</h1>
+
+        <div class="record-header__introduction">
+          <p>{description}</p>
+          <div>
+            <span>{category?.name || 'Unclassified'}</span>
+            <span>{wallpaper.orientation}</span>
+            <span>{wallpaper.resolutionLabel || 'High resolution'}</span>
+          </div>
+        </div>
+      </header>
+    </div>
+
+    <section
+      class:list={['artwork-dossier', `is-${wallpaper.orientation}`]}
+      aria-labelledby="original-master-title"
+    >
+      <div class="detail-frame artwork-dossier__grid">
+        <div class="artwork-column">
+          <figure
+            class="artwork-stage"
+            style={`--artwork-ratio: ${aspectRatio}; aspect-ratio: ${wallpaper.width} / ${wallpaper.height};`}
+            data-image-reveal
+          >
+            <ResponsiveWallpaperImage
+              wallpaper={wallpaper}
+              alt={`${wallpaper.title} wallpaper preview`}
+              sizes={DETAIL_IMAGE_SIZES}
+              loading="eager"
+              fetchPriority="high"
+              pictureClass="detail-picture"
+              imageClass="detail-image"
+            />
+          </figure>
+
+          <div class="artwork-caption">
+            <span>Preview asset</span>
+            <span>{wallpaper.width} × {wallpaper.height} px</span>
+            <span>Untouched original preserved</span>
+          </div>
+        </div>
+
+        <aside class="download-rail" data-reveal>
+          <p class="section-kicker">Acquisition file</p>
+          <h2 id="original-master-title">Original<br />master</h2>
+          <p class="download-rail__copy">
+            The source file is delivered exactly as archived, without re-encoding or resolution downscaling.
+          </p>
+
+          <dl class="download-summary">
+            <div>
+              <dt>File</dt>
+              <dd>{wallpaper.format.toUpperCase()}</dd>
+            </div>
+            <div>
+              <dt>Size</dt>
+              <dd>{fileSizeMb} MB</dd>
+            </div>
+            <div>
+              <dt>Resolution</dt>
+              <dd>{wallpaper.resolutionLabel || `${wallpaper.width} px`}</dd>
+            </div>
+          </dl>
+
+          <a class="download-action" href={downloadUrl} download>
+            <span>Download original</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v13"></path>
+              <path d="m7 11 5 5 5-5"></path>
+              <path d="M4 21h16"></path>
+            </svg>
+          </a>
+          <p class="download-rail__note">Untouched original · {wallpaper.format.toUpperCase()} · {fileSizeMb} MB</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="technical-section detail-frame" aria-labelledby="technical-title" data-reveal>
+      <header>
+        <p class="section-kicker">01 / Technical dossier</p>
+        <h2 id="technical-title">Material<br />specification</h2>
+      </header>
+
+      <div class="technical-content">
+        <dl class="specification-grid">
+          <div>
+            <dt>Dimensions</dt>
+            <dd>{wallpaper.width} × {wallpaper.height} px</dd>
+          </div>
+          <div>
+            <dt>Aspect ratio</dt>
+            <dd>{aspectRatioLabel} : 1</dd>
+          </div>
+          <div>
+            <dt>Orientation</dt>
+            <dd>{wallpaper.orientation}</dd>
+          </div>
+          <div>
+            <dt>Format</dt>
+            <dd>{wallpaper.format.toUpperCase()}</dd>
+          </div>
+          <div>
+            <dt>MIME type</dt>
+            <dd>{wallpaper.mimeType}</dd>
+          </div>
+          <div>
+            <dt>File size</dt>
+            <dd>{fileSizeMb} MB</dd>
+          </div>
+          <div>
+            <dt>Resolution class</dt>
+            <dd>{wallpaper.resolutionLabel || 'High resolution'}</dd>
+          </div>
+          <div>
+            <dt>Archive code</dt>
+            <dd>{archiveCode}</dd>
+          </div>
+          <div>
+            <dt>Collected</dt>
+            <dd>{wallpaper.downloadCount.toLocaleString('en-US')} times</dd>
+          </div>
+        </dl>
+
+        {wallpaper.fileHash && (
+          <details class="checksum">
+            <summary>
+              <span>File integrity</span>
+              <span>View SHA-256 checksum</span>
+            </summary>
+            <code>{wallpaper.fileHash}</code>
+          </details>
+        )}
+      </div>
+    </section>
+
+    <section class="provenance-section detail-frame" aria-labelledby="provenance-title" data-reveal>
+      <header>
+        <p class="section-kicker">02 / Record notes</p>
+        <h2 id="provenance-title">Provenance</h2>
+      </header>
+
+      <div class="provenance-content">
+        <dl class="provenance-list">
+          <div>
+            <dt>Creator</dt>
+            <dd>
+              {wallpaper.creatorUrl ? (
+                <a href={wallpaper.creatorUrl} target="_blank" rel="noreferrer">{wallpaper.creator || 'Unknown creator'} ↗</a>
+              ) : wallpaper.creator || 'Unknown creator'}
+            </dd>
+          </div>
+          <div>
+            <dt>Usage</dt>
+            <dd>{wallpaper.licenseNote || 'Free for personal desktop and mobile wallpaper display.'}</dd>
+          </div>
+          <div>
+            <dt>Source</dt>
+            <dd>
+              {wallpaper.sourceUrl ? (
+                <a href={wallpaper.sourceUrl} target="_blank" rel="noreferrer">
+                  {wallpaper.sourceProvider || 'Original source'} ↗
+                </a>
+              ) : wallpaper.sourceProvider || 'Elysium direct acquisition'}
+            </dd>
+          </div>
+          {wallpaper.sourceProvenance && (
+            <div>
+              <dt>Archive note</dt>
+              <dd>{wallpaper.sourceProvenance}</dd>
+            </div>
+          )}
+        </dl>
+
+        {tags.length > 0 && (
+          <div class="tag-index" aria-labelledby="tag-title">
+            <p id="tag-title">Filed under</p>
+            <div>
+              {tags.map((tag, index) => (
+                <a href={`/tag/${tag.slug}`}>
+                  <span>{String(index + 1).padStart(2, '0')}</span>
+                  {tag.name}
+                  <span aria-hidden="true">↗</span>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+
+    {relatedWallpapers.length > 0 && (
+      <section class="related-section detail-frame" aria-labelledby="related-title">
+        <header class="related-heading" data-reveal>
+          <div>
+            <p class="section-kicker">03 / Archive correspondence</p>
+            <h2 id="related-title">Related Editions</h2>
+          </div>
+          <a href="/explore">View all records</a>
+        </header>
+
+        <div class="related-grid">
+          {relatedWallpapers.map((item, index) => (
+            <WallpaperCard wallpaper={item} appearance="editorial" index={index} />
+          ))}
+        </div>
+      </section>
+    )}
+  </article>
+
+  <div class="mobile-download-dock" aria-label="Original master download">
+    <div>
+      <span>Original master</span>
+      <strong>{wallpaper.format.toUpperCase()} · {fileSizeMb} MB</strong>
+    </div>
+    <a href={downloadUrl} download aria-label={`Download ${wallpaper.title} original master`}>
+      Download
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v13"></path>
+        <path d="m7 11 5 5 5-5"></path>
+        <path d="M4 21h16"></path>
+      </svg>
+    </a>
+  </div>
+</Layout>
+
+<script>
+  import Lenis from 'lenis';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal], [data-image-reveal]'));
+
+  if (!reducedMotion.matches) {
+    document.documentElement.classList.add('motion-ready');
+
+    const lenis = new Lenis({
+      anchors: { offset: -76 },
+      autoRaf: true,
+      duration: 1.1,
+      easing: (time: number) => Math.min(1, 1.001 - Math.pow(2, -10 * time)),
+      smoothWheel: true,
+      stopInertiaOnNavigate: true,
+      syncTouch: false,
+      respectReducedMotion: true,
+    });
+
+    const revealObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }, {
+          rootMargin: '0px 0px -8% 0px',
+          threshold: 0.08,
+        })
+      : null;
+
+    requestAnimationFrame(() => {
+      if (revealObserver) {
+        revealTargets.forEach((target) => revealObserver.observe(target));
+      } else {
+        revealTargets.forEach((target) => target.classList.add('is-visible'));
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      revealObserver?.disconnect();
+      lenis.destroy();
+    }, { once: true });
+  }
+</script>
+
+<style>
+  .detail-page {
+    overflow: clip;
+  }
+
+  .detail-frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding-left: var(--luxury-gutter);
+    padding-right: var(--luxury-gutter);
+  }
+
+  .record-breadcrumb {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.61rem;
+    justify-content: space-between;
+    letter-spacing: 0.06em;
+    padding: 1rem 0;
+    text-transform: uppercase;
+  }
+
+  .record-breadcrumb ol {
+    align-items: center;
+    display: flex;
+    list-style: none;
+    min-width: 0;
+  }
+
+  .record-breadcrumb li {
+    align-items: center;
+    display: flex;
+    min-width: 0;
+  }
+
+  .record-breadcrumb li:not(:last-child)::after {
+    color: var(--luxury-muted);
+    content: '/';
+    margin: 0 0.65rem;
+  }
+
+  .record-breadcrumb li:last-child {
+    color: var(--luxury-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .record-breadcrumb a {
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .record-breadcrumb a:hover {
+    opacity: 0.58;
+  }
+
+  .record-breadcrumb a:active {
+    transform: scale(0.98);
+  }
+
+  .record-header {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding-bottom: clamp(4.5rem, 9vw, 9rem);
+    padding-top: clamp(2.5rem, 5vw, 5rem);
+  }
+
+  .record-header__index {
+    grid-column: 1 / span 3;
+  }
+
+  .record-header__index > p,
+  .section-kicker {
+    color: var(--luxury-muted);
+    font-size: 0.58rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  .record-header__index dl {
+    display: grid;
+    gap: 0.75rem;
+    margin-top: 2rem;
+  }
+
+  .record-header__index dl div {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 0.8fr) 1fr;
+  }
+
+  .record-header__index dt,
+  .record-header__index dd {
+    font-size: 0.62rem;
+  }
+
+  .record-header__index dt {
+    color: var(--luxury-muted);
+  }
+
+  .record-header__index dd {
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+  }
+
+  .record-header h1 {
+    font-size: clamp(4.2rem, 10.6vw, 12rem);
+    font-stretch: 125%;
+    font-weight: 720;
+    grid-column: 1 / -1;
+    letter-spacing: -0.09em;
+    line-height: 0.78;
+    margin-top: clamp(4rem, 8vw, 8rem);
+    max-width: 11ch;
+    overflow-wrap: anywhere;
+  }
+
+  .record-header__introduction {
+    align-self: end;
+    grid-column: 8 / -1;
+    margin-top: clamp(3rem, 6vw, 6rem);
+  }
+
+  .record-header__introduction > p {
+    font-size: clamp(1rem, 1.4vw, 1.35rem);
+    font-stretch: 105%;
+    font-weight: 430;
+    letter-spacing: -0.025em;
+    line-height: 1.45;
+    max-width: 34rem;
+  }
+
+  .record-header__introduction > div {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.58rem;
+    gap: 0.5rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.06em;
+    margin-top: 2rem;
+    padding-top: 0.75rem;
+    text-transform: uppercase;
+  }
+
+  .record-header__introduction span:not(:first-child) {
+    color: var(--luxury-muted);
+    text-align: right;
+  }
+
+  .artwork-dossier {
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+  }
+
+  .artwork-dossier__grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .artwork-column {
+    border-right: 1px solid var(--luxury-line);
+    grid-column: 1 / span 9;
+    min-width: 0;
+    padding: clamp(1rem, 2vw, 2rem) clamp(1rem, 2vw, 2rem) clamp(1rem, 1.5vw, 1.5rem) 0;
+  }
+
+  .artwork-stage {
+    background: var(--luxury-paper-deep);
+    margin: 0;
+    overflow: hidden;
+    width: 100%;
+  }
+
+  .is-portrait .artwork-column {
+    grid-column: 1 / span 8;
+  }
+
+  .is-portrait .artwork-stage {
+    margin-left: auto;
+    margin-right: auto;
+    width: min(100%, calc(82vh * var(--artwork-ratio)));
+  }
+
+  .is-square .artwork-stage {
+    margin-left: auto;
+    margin-right: auto;
+    width: min(100%, 82vh);
+  }
+
+  :global(.detail-picture) {
+    display: block;
+    height: 100%;
+    width: 100%;
+  }
+
+  :global(.detail-image) {
+    background: var(--luxury-paper-deep);
+    height: 100%;
+    object-fit: contain;
+    transition: transform 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+    width: 100%;
+  }
+
+  .artwork-stage:hover :global(.detail-image) {
+    transform: scale(1.015);
+  }
+
+  .artwork-caption {
+    color: var(--luxury-muted);
+    display: grid;
+    font-size: 0.55rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.06em;
+    padding-top: 0.75rem;
+    text-transform: uppercase;
+  }
+
+  .artwork-caption span:nth-child(2) {
+    text-align: center;
+  }
+
+  .artwork-caption span:last-child {
+    text-align: right;
+  }
+
+  .download-rail {
+    align-self: start;
+    grid-column: 10 / -1;
+    padding: clamp(1.5rem, 2.75vw, 3rem) 0 clamp(1.5rem, 2.75vw, 3rem) clamp(1.25rem, 2.5vw, 2.75rem);
+    position: sticky;
+    top: 76px;
+  }
+
+  .is-portrait .download-rail {
+    grid-column: 9 / -1;
+  }
+
+  .download-rail h2,
+  .technical-section h2,
+  .provenance-section h2 {
+    font-size: clamp(2.4rem, 4.75vw, 5.5rem);
+    font-stretch: 118%;
+    font-weight: 570;
+    letter-spacing: -0.07em;
+    line-height: 0.9;
+    margin-top: 2.25rem;
+  }
+
+  .download-rail__copy {
+    color: var(--luxury-muted);
+    font-size: 0.78rem;
+    line-height: 1.55;
+    margin-top: clamp(2.5rem, 4vw, 4rem);
+    max-width: 28rem;
+  }
+
+  .download-summary {
+    border-top: 1px solid var(--luxury-line);
+    margin-top: clamp(2rem, 4vw, 4rem);
+  }
+
+  .download-summary > div {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.64rem;
+    justify-content: space-between;
+    padding: 0.72rem 0;
+  }
+
+  .download-summary dt {
+    color: var(--luxury-muted);
+  }
+
+  .download-summary dd {
+    font-variant-numeric: tabular-nums;
+    margin: 0;
+    text-align: right;
+  }
+
+  .download-action {
+    align-items: center;
+    background: var(--luxury-ink);
+    color: var(--luxury-paper);
+    display: flex;
+    font-size: 0.75rem;
+    justify-content: space-between;
+    margin-top: clamp(2rem, 3vw, 3rem);
+    padding: 1rem 1.1rem;
+    transition: background-color 220ms ease, color 220ms ease, transform 220ms ease;
+  }
+
+  .download-action svg,
+  .mobile-download-dock svg {
+    fill: none;
+    height: 18px;
+    stroke: currentColor;
+    stroke-linecap: square;
+    stroke-width: 1.5;
+    width: 18px;
+  }
+
+  .download-action:hover {
+    background: var(--luxury-muted);
+  }
+
+  .download-action:active {
+    transform: scale(0.985);
+  }
+
+  .download-rail__note {
+    color: var(--luxury-muted);
+    font-size: 0.52rem;
+    letter-spacing: 0.05em;
+    margin-top: 0.65rem;
+    text-transform: uppercase;
+  }
+
+  .technical-section,
+  .provenance-section {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding-bottom: var(--luxury-space);
+    padding-top: var(--luxury-space);
+  }
+
+  .technical-section > header,
+  .provenance-section > header {
+    grid-column: 1 / span 4;
+  }
+
+  .technical-content,
+  .provenance-content {
+    grid-column: 5 / -1;
+  }
+
+  .specification-grid {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .specification-grid > div {
+    border-bottom: 1px solid var(--luxury-line);
+    min-height: 7.25rem;
+    padding: 0.8rem 1rem 1.2rem 0;
+  }
+
+  .specification-grid > div:not(:nth-child(3n + 1)) {
+    border-left: 1px solid var(--luxury-line);
+    padding-left: 1rem;
+  }
+
+  .specification-grid dt,
+  .provenance-list dt {
+    color: var(--luxury-muted);
+    font-size: 0.56rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .specification-grid dd {
+    font-size: clamp(1rem, 1.35vw, 1.3rem);
+    font-stretch: 106%;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.025em;
+    margin: 2rem 0 0;
+    overflow-wrap: anywhere;
+    text-transform: capitalize;
+  }
+
+  .checksum {
+    border-bottom: 1px solid var(--luxury-line);
+  }
+
+  .checksum summary {
+    cursor: pointer;
+    display: flex;
+    font-size: 0.64rem;
+    justify-content: space-between;
+    list-style: none;
+    padding: 1rem 0;
+  }
+
+  .checksum summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .checksum summary span:first-child {
+    color: var(--luxury-muted);
+  }
+
+  .checksum summary span:last-child::after {
+    content: '+';
+    display: inline-block;
+    margin-left: 0.75rem;
+  }
+
+  .checksum[open] summary span:last-child::after {
+    content: '−';
+  }
+
+  .checksum code {
+    display: block;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.66rem;
+    overflow-wrap: anywhere;
+    padding: 0.5rem 0 1.25rem;
+  }
+
+  .provenance-section {
+    border-top: 1px solid var(--luxury-line);
+  }
+
+  .provenance-list {
+    border-top: 1px solid var(--luxury-line);
+  }
+
+  .provenance-list > div {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr 3fr;
+    padding: 1rem 0;
+  }
+
+  .provenance-list dd {
+    font-size: 0.85rem;
+    line-height: 1.55;
+    margin: 0;
+  }
+
+  .provenance-list a {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.25em;
+  }
+
+  .tag-index {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 1fr 3fr;
+    margin-top: clamp(3rem, 5vw, 5rem);
+  }
+
+  .tag-index > p {
+    color: var(--luxury-muted);
+    font-size: 0.56rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .tag-index > div {
+    border-top: 1px solid var(--luxury-line);
+  }
+
+  .tag-index a {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: clamp(1.2rem, 2vw, 2rem);
+    font-stretch: 112%;
+    font-weight: 520;
+    grid-template-columns: 2.5rem 1fr auto;
+    letter-spacing: -0.04em;
+    padding: 0.65rem 0;
+    transition: padding 250ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .tag-index a:hover {
+    padding-left: 0.5rem;
+  }
+
+  .tag-index a span {
+    color: var(--luxury-muted);
+    font-size: 0.55rem;
+    letter-spacing: 0;
+  }
+
+  .related-section {
+    border-top: 1px solid var(--luxury-line);
+    padding-bottom: var(--luxury-space);
+    padding-top: var(--luxury-space);
+  }
+
+  .related-heading {
+    align-items: end;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(3rem, 6vw, 6rem);
+  }
+
+  .related-heading > div {
+    grid-column: 1 / span 9;
+  }
+
+  .related-heading h2 {
+    font-size: clamp(3.25rem, 8vw, 9rem);
+    font-stretch: 122%;
+    font-weight: 650;
+    letter-spacing: -0.08em;
+    line-height: 0.85;
+    margin-top: 1.75rem;
+  }
+
+  .related-heading > a {
+    border-bottom: 1px solid currentColor;
+    font-size: 0.65rem;
+    grid-column: 11 / -1;
+    justify-self: stretch;
+    padding-bottom: 0.45rem;
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .related-heading > a:hover {
+    opacity: 0.58;
+  }
+
+  .related-heading > a:active {
+    transform: scale(0.985);
+  }
+
+  .related-grid {
+    align-items: start;
+    display: grid;
+    gap: clamp(2.5rem, 5vw, 5rem) clamp(1rem, 2vw, 2rem);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  :global(.related-grid .editorial-card[data-orientation='landscape']) {
+    grid-column: span 2;
+  }
+
+  .mobile-download-dock {
+    display: none;
+  }
+
+  :global(html.motion-ready [data-reveal]) {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition: opacity 700ms cubic-bezier(0.22, 1, 0.36, 1), transform 700ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-image-reveal] > *) {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal].is-visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(html.motion-ready [data-image-reveal].is-visible > *) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (max-width: 1100px) {
+    .artwork-column {
+      grid-column: 1 / span 8;
+    }
+
+    .download-rail {
+      grid-column: 9 / -1;
+    }
+
+    .record-header__introduction {
+      grid-column: 7 / -1;
+    }
+
+    .related-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 760px) {
+    :global(body[data-surface='detail-luxury']) {
+      padding-bottom: calc(5rem + env(safe-area-inset-bottom));
+    }
+
+    .record-breadcrumb__return {
+      display: none;
+    }
+
+    .record-header {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      padding-bottom: 4.5rem;
+    }
+
+    .record-header__index {
+      grid-column: 1 / -1;
+    }
+
+    .record-header__index dl {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .record-header__index dl div {
+      display: block;
+    }
+
+    .record-header__index dd {
+      margin-top: 0.25rem;
+    }
+
+    .record-header h1 {
+      font-size: clamp(3.75rem, 20vw, 6.5rem);
+      grid-column: 1 / -1;
+      line-height: 0.82;
+      margin-top: 4.5rem;
+    }
+
+    .record-header__introduction {
+      grid-column: 1 / -1;
+      margin-top: 3rem;
+    }
+
+    .record-header__introduction > div {
+      gap: 0.35rem;
+      grid-template-columns: 1fr;
+    }
+
+    .record-header__introduction span:not(:first-child) {
+      text-align: left;
+    }
+
+    .artwork-dossier__grid {
+      display: block;
+    }
+
+    .artwork-column,
+    .is-portrait .artwork-column {
+      border-right: 0;
+      padding: 1rem 0;
+    }
+
+    .is-portrait .artwork-stage {
+      width: min(100%, calc(76vh * var(--artwork-ratio)));
+    }
+
+    .artwork-caption {
+      gap: 0.35rem;
+      grid-template-columns: 1fr;
+    }
+
+    .artwork-caption span:nth-child(2),
+    .artwork-caption span:last-child {
+      text-align: left;
+    }
+
+    .download-rail {
+      border-top: 1px solid var(--luxury-line);
+      padding: 2.5rem 0 3rem;
+      position: static;
+    }
+
+    .download-action,
+    .download-rail__note {
+      display: none;
+    }
+
+    .technical-section,
+    .provenance-section {
+      display: block;
+      padding-bottom: 5.5rem;
+      padding-top: 5.5rem;
+    }
+
+    .technical-content,
+    .provenance-content {
+      margin-top: 3.5rem;
+    }
+
+    .specification-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .specification-grid > div:not(:nth-child(3n + 1)) {
+      border-left: 0;
+      padding-left: 0;
+    }
+
+    .specification-grid > div:nth-child(even) {
+      border-left: 1px solid var(--luxury-line);
+      padding-left: 0.85rem;
+    }
+
+    .specification-grid > div {
+      min-height: 6.5rem;
+      padding-right: 0.75rem;
+    }
+
+    .provenance-list > div,
+    .tag-index {
+      grid-template-columns: 1fr;
+    }
+
+    .tag-index {
+      gap: 1.5rem;
+    }
+
+    .related-section {
+      padding-bottom: 5.5rem;
+      padding-top: 5.5rem;
+    }
+
+    .related-heading {
+      display: block;
+    }
+
+    .related-heading > a {
+      display: block;
+      margin-top: 2.5rem;
+    }
+
+    .mobile-download-dock {
+      align-items: center;
+      background: var(--luxury-ink);
+      bottom: 0;
+      color: var(--luxury-paper);
+      display: flex;
+      justify-content: space-between;
+      left: 0;
+      padding: 0.75rem max(1rem, env(safe-area-inset-left)) calc(0.75rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-right));
+      position: fixed;
+      right: 0;
+      z-index: 120;
+    }
+
+    .mobile-download-dock > div {
+      display: grid;
+      gap: 0.2rem;
+    }
+
+    .mobile-download-dock span {
+      color: var(--luxury-line);
+      font-size: 0.52rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    .mobile-download-dock strong {
+      font-size: 0.68rem;
+      font-weight: 500;
+    }
+
+    .mobile-download-dock a {
+      align-items: center;
+      border: 1px solid color-mix(in oklch, var(--luxury-paper), transparent 45%);
+      display: flex;
+      font-size: 0.7rem;
+      gap: 0.65rem;
+      padding: 0.65rem 0.8rem;
+      transition: background-color 200ms ease, color 200ms ease, transform 200ms ease;
+    }
+
+    .mobile-download-dock a:active {
+      transform: scale(0.97);
+    }
+  }
+
+  @media (max-width: 520px) {
+    .record-breadcrumb li:nth-child(2) {
+      display: none;
+    }
+
+    .record-breadcrumb li:first-child::after {
+      display: none;
+    }
+
+    .specification-grid {
+      grid-template-columns: 1fr;
+    }
+
+    .specification-grid > div:nth-child(even) {
+      border-left: 0;
+      padding-left: 0;
+    }
+
+    .related-grid {
+      grid-template-columns: 1fr;
+    }
+
+    :global(.related-grid .editorial-card[data-orientation='landscape']) {
+      grid-column: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-reveal]),
+    :global([data-image-reveal]),
+    :global([data-image-reveal] > *) {
+      clip-path: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

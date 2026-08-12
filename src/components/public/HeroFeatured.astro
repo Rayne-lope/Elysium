@@ -1,0 +1,460 @@
+---
+import type { Wallpaper } from '@/types';
+import ResponsiveWallpaperImage from './ResponsiveWallpaperImage.astro';
+import { HERO_IMAGE_SIZES } from '@/lib/preview-assets';
+
+interface Props {
+  wallpaper?: Wallpaper | null;
+}
+
+const { wallpaper } = Astro.props;
+const orientationClass = wallpaper ? `is-${wallpaper.orientation}` : '';
+---
+
+<section class="home-hero" aria-labelledby="home-title">
+  <div class="home-hero__frame">
+    <div class="home-hero__masthead">
+      <div class="home-hero__index" data-reveal>
+        <span>Digital archive</span>
+        <span>Est. 2026</span>
+      </div>
+
+      <h1 id="home-title" class="swiss-wordmark" data-reveal aria-label="ELYSIUM">
+        <span class="swiss-char-wrap"><span class="swiss-char" data-char="E" style="--char-idx: 0;">E</span></span>
+        <span class="swiss-char-wrap"><span class="swiss-char" data-char="L" style="--char-idx: 1;">L</span></span>
+        <span class="swiss-char-wrap"><span class="swiss-char" data-char="Y" style="--char-idx: 2;">Y</span></span>
+        <span class="swiss-char-wrap"><span class="swiss-char" data-char="S" style="--char-idx: 3;">S</span></span>
+        <span class="swiss-char-wrap"><span class="swiss-char" data-char="I" style="--char-idx: 4;">I</span></span>
+        <span class="swiss-char-wrap"><span class="swiss-char" data-char="U" style="--char-idx: 5;">U</span></span>
+        <span class="swiss-char-wrap"><span class="swiss-char" data-char="M" style="--char-idx: 6;">M</span></span>
+      </h1>
+
+      <p class="home-hero__statement" data-reveal>
+        A considered archive of high-resolution artworks, preserved in their original form.
+      </p>
+
+      <a class="home-hero__scroll" href="#new-editions" data-reveal>
+        <span>Enter the archive</span>
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3v17M6 14l6 6 6-6"></path>
+        </svg>
+      </a>
+    </div>
+
+    {wallpaper ? (
+      <article
+        class:list={['featured-work', orientationClass]}
+        style={`--featured-ratio: ${wallpaper.aspectRatio || wallpaper.width / wallpaper.height};`}
+        aria-labelledby="featured-title"
+      >
+        <a
+          href={`/wallpaper/${wallpaper.slug}`}
+          class="featured-work__media"
+          data-image-reveal
+          aria-label={`View ${wallpaper.title}`}
+        >
+          <ResponsiveWallpaperImage
+            wallpaper={wallpaper}
+            alt={`${wallpaper.title}, featured Elysium artwork`}
+            sizes={HERO_IMAGE_SIZES}
+            loading="eager"
+            fetchPriority="high"
+            mobileSourceMaxWidth={480}
+            pictureClass="featured-picture"
+            imageClass="featured-image"
+          />
+        </a>
+
+        <div class="featured-work__details" data-reveal>
+          <div class="featured-work__eyebrow">
+            <span>Featured acquisition</span>
+            <span>01</span>
+          </div>
+
+          <div class="featured-work__title-block">
+            <h2 id="featured-title">{wallpaper.title}</h2>
+            <p>
+              {wallpaper.description || 'An untouched master selected from the newest additions to the Elysium archive.'}
+            </p>
+          </div>
+
+          <dl class="featured-work__specs">
+            <div>
+              <dt>Format</dt>
+              <dd>{wallpaper.orientation}</dd>
+            </div>
+            <div>
+              <dt>Resolution</dt>
+              <dd>{wallpaper.width} × {wallpaper.height}</dd>
+            </div>
+            <div>
+              <dt>Master</dt>
+              <dd>{wallpaper.resolutionLabel || wallpaper.format.toUpperCase()}</dd>
+            </div>
+          </dl>
+
+          <a href={`/wallpaper/${wallpaper.slug}`} class="featured-work__link">
+            View artwork
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 12h15M13 6l6 6-6 6"></path>
+            </svg>
+          </a>
+        </div>
+      </article>
+    ) : (
+      <div class="featured-empty" data-reveal>
+        <p>The archive is being prepared.</p>
+        <a href="/explore">Explore the collection</a>
+      </div>
+    )}
+  </div>
+</section>
+
+<style>
+  .home-hero {
+    border-bottom: 1px solid var(--luxury-line);
+  }
+
+  .home-hero__frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding: 0 var(--luxury-gutter) clamp(4rem, 8vw, 8rem);
+  }
+
+  .home-hero__masthead {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding: clamp(2.5rem, 5vw, 5rem) 0 clamp(4rem, 8vw, 8rem);
+  }
+
+  .home-hero__index {
+    color: var(--luxury-muted);
+    display: flex;
+    flex-direction: column;
+    font-size: 0.58rem;
+    grid-column: 1 / span 2;
+    letter-spacing: 0.1em;
+    line-height: 1.7;
+    text-transform: uppercase;
+  }
+
+  .home-hero h1.swiss-wordmark {
+    align-self: end;
+    font-size: clamp(4.25rem, 14.75vw, 15.5rem);
+    font-stretch: 125%;
+    font-weight: 760;
+    grid-column: 1 / -1;
+    letter-spacing: -0.105em;
+    line-height: 0.72;
+    margin-left: -0.06em;
+    margin-top: clamp(2rem, 5vw, 5rem);
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: baseline;
+    cursor: default;
+    user-select: none;
+    transition: letter-spacing 700ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Swiss Kerning Grid Expansion on Wordmark Hover */
+  .home-hero h1.swiss-wordmark:hover {
+    letter-spacing: -0.065em;
+  }
+
+  .swiss-char-wrap {
+    display: inline-block;
+    position: relative;
+    vertical-align: bottom;
+  }
+
+  .swiss-char {
+    display: inline-block;
+    position: relative;
+    color: var(--luxury-ink);
+    transition: transform 450ms cubic-bezier(0.16, 1, 0.3, 1), color 350ms ease, opacity 350ms ease;
+    will-change: transform, color;
+  }
+
+  /* Swiss Poster Screenprint Offset Outline (Red Accent) */
+  .swiss-char::after {
+    content: attr(data-char);
+    position: absolute;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    color: transparent;
+    -webkit-text-stroke: 1.5px #e30613;
+    opacity: 0;
+    transform: translate(0, 0);
+    transition: transform 450ms cubic-bezier(0.16, 1, 0.3, 1), opacity 350ms ease;
+  }
+
+  /* Interactive Letter Hover */
+  .swiss-char:hover {
+    transform: translateY(-0.04em);
+    color: var(--luxury-ink);
+  }
+
+  .swiss-char:hover::after {
+    opacity: 0.95;
+    transform: translate(0.024em, -0.024em);
+  }
+
+  /* Subtle focus shift on non-hovered letters */
+  .swiss-wordmark:hover .swiss-char:not(:hover) {
+    opacity: 0.82;
+  }
+
+  .home-hero__statement {
+    font-size: clamp(1.1rem, 1.7vw, 1.8rem);
+    font-stretch: 108%;
+    font-weight: 430;
+    grid-column: 7 / span 4;
+    letter-spacing: -0.035em;
+    line-height: 1.12;
+    margin-top: clamp(2.5rem, 4vw, 4rem);
+    max-width: 28ch;
+  }
+
+  .home-hero__scroll {
+    align-items: center;
+    align-self: end;
+    border-bottom: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.68rem;
+    grid-column: 11 / span 2;
+    justify-content: space-between;
+    margin-top: clamp(2.5rem, 4vw, 4rem);
+    padding: 0.65rem 0;
+    text-transform: uppercase;
+    transition: border-color 480ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .home-hero__scroll:hover {
+    border-color: var(--luxury-ink);
+  }
+
+  .home-hero__scroll:active,
+  .featured-work__link:active {
+    transform: scale(0.985);
+  }
+
+  .home-hero__scroll svg,
+  .featured-work__link svg {
+    fill: none;
+    height: 16px;
+    stroke: currentColor;
+    stroke-width: 1.25;
+    width: 16px;
+  }
+
+  .featured-work {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding-top: var(--luxury-gutter);
+  }
+
+  .featured-work__media {
+    aspect-ratio: var(--featured-ratio);
+    display: block;
+    grid-column: 1 / span 8;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .featured-work.is-portrait .featured-work__media {
+    grid-column: 1 / span 6;
+    max-width: 760px;
+  }
+
+  :global(.featured-picture) {
+    display: block;
+    height: 100%;
+    width: 100%;
+  }
+
+  :global(.featured-image) {
+    height: 100%;
+    object-fit: cover;
+    transition: transform 1.25s cubic-bezier(0.22, 1, 0.36, 1);
+    width: 100%;
+  }
+
+  .featured-work__media:hover :global(.featured-image) {
+    transform: scale(1.03);
+  }
+
+  .featured-work__details {
+    display: flex;
+    flex-direction: column;
+    grid-column: 9 / -1;
+    min-height: 100%;
+    padding-left: clamp(1.5rem, 3vw, 3.5rem);
+  }
+
+  .featured-work.is-portrait .featured-work__details {
+    grid-column: 8 / -1;
+  }
+
+  .featured-work__eyebrow {
+    border-bottom: 1px solid var(--luxury-line);
+    color: var(--luxury-muted);
+    display: flex;
+    font-size: 0.58rem;
+    justify-content: space-between;
+    letter-spacing: 0.09em;
+    padding-bottom: 0.75rem;
+    text-transform: uppercase;
+  }
+
+  .featured-work__title-block {
+    padding: clamp(2rem, 4vw, 4rem) 0;
+  }
+
+  .featured-work h2 {
+    font-size: clamp(2.5rem, 5.2vw, 6.5rem);
+    font-stretch: 117%;
+    font-weight: 530;
+    letter-spacing: -0.07em;
+    line-height: 0.9;
+    overflow-wrap: anywhere;
+  }
+
+  .featured-work__title-block p {
+    color: var(--luxury-muted);
+    font-size: 0.86rem;
+    line-height: 1.55;
+    margin-top: 1.5rem;
+    max-width: 48ch;
+  }
+
+  .featured-work__specs {
+    border-top: 1px solid var(--luxury-line);
+    margin-top: auto;
+  }
+
+  .featured-work__specs div {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.66rem;
+    grid-template-columns: 1fr 1fr;
+    padding: 0.7rem 0;
+  }
+
+  .featured-work__specs dt {
+    color: var(--luxury-muted);
+    text-transform: uppercase;
+  }
+
+  .featured-work__specs dd {
+    text-align: right;
+    text-transform: capitalize;
+  }
+
+  .featured-work__link {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-ink);
+    display: flex;
+    font-size: 0.74rem;
+    font-weight: 600;
+    justify-content: space-between;
+    margin-top: clamp(1.5rem, 3vw, 3rem);
+    padding: 0.75rem 0;
+    text-transform: uppercase;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .featured-empty {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.8rem;
+    justify-content: space-between;
+    padding: 1rem 0;
+  }
+
+  .featured-empty a {
+    text-decoration: underline;
+    text-underline-offset: 0.25em;
+  }
+
+  @media (max-width: 900px) {
+    .home-hero__masthead,
+    .featured-work {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .home-hero__index {
+      grid-column: 1 / span 2;
+    }
+
+    .home-hero h1 {
+      font-size: clamp(4rem, 15vw, 8rem);
+      grid-column: 1 / -1;
+    }
+
+    .home-hero__statement {
+      grid-column: 1 / span 4;
+    }
+
+    .home-hero__scroll {
+      grid-column: 5 / span 2;
+    }
+
+    .featured-work__media,
+    .featured-work.is-portrait .featured-work__media {
+      grid-column: 1 / span 4;
+      max-width: none;
+    }
+
+    .featured-work__details,
+    .featured-work.is-portrait .featured-work__details {
+      grid-column: 5 / -1;
+      padding-left: 1.5rem;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .home-hero__masthead {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      padding-top: 2rem;
+    }
+
+    .home-hero__index {
+      grid-column: 1 / span 2;
+    }
+
+    .home-hero h1 {
+      font-size: 19.1vw;
+      grid-column: 1 / -1;
+      letter-spacing: -0.115em;
+      line-height: 0.78;
+      margin-top: 4rem;
+    }
+
+    .home-hero__statement {
+      grid-column: 1 / span 3;
+      margin-top: 2.25rem;
+    }
+
+    .home-hero__scroll {
+      grid-column: 1 / -1;
+      margin-top: 2rem;
+    }
+
+    .featured-work {
+      display: block;
+    }
+
+    .featured-work__details,
+    .featured-work.is-portrait .featured-work__details {
+      padding: 1.5rem 0 0;
+    }
+
+    .featured-work h2 {
+      font-size: clamp(2.75rem, 15vw, 4.75rem);
+    }
+  }
+</style>

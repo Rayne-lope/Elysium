@@ -1,0 +1,255 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import StatCard from '@/components/admin/StatCard.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Wallpaper } from '@/types';
+
+const db = env.DB;
+
+let stats = {
+  totalWallpapers: 0,
+  publishedCount: 0,
+  draftCount: 0,
+  totalDownloads: 0,
+  totalCategories: 0,
+};
+let recentWallpapers: Wallpaper[] = [];
+
+if (db) {
+  try {
+    const totalRow = await db.prepare('SELECT COUNT(*) as count FROM wallpapers').first<{ count: number }>();
+    const publishedRow = await db.prepare('SELECT COUNT(*) as count FROM wallpapers WHERE status = "published"').first<{ count: number }>();
+    const draftRow = await db.prepare('SELECT COUNT(*) as count FROM wallpapers WHERE status = "draft"').first<{ count: number }>();
+    const downloadRow = await db.prepare('SELECT SUM(download_count) as total FROM wallpapers').first<{ total: number }>();
+    const categoriesRow = await db.prepare('SELECT COUNT(*) as count FROM categories').first<{ count: number }>();
+
+    stats = {
+      totalWallpapers: totalRow?.count || 0,
+      publishedCount: publishedRow?.count || 0,
+      draftCount: draftRow?.count || 0,
+      totalDownloads: downloadRow?.total || 0,
+      totalCategories: categoriesRow?.count || 0,
+    };
+
+    const recentResult = await DBService.listWallpapers(db, { limit: 5, page: 1, sortBy: 'newest' });
+    recentWallpapers = recentResult.wallpapers;
+  } catch (e) {
+    console.error('Error fetching dashboard stats:', e);
+  }
+}
+---
+
+<AdminLayout title="Admin Dashboard | Elysium" activeTab="dashboard">
+  
+  <!-- Header & Quick Actions -->
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+    <div>
+      <h1 style="font-family: var(--font-heading); font-size: 2rem; font-weight: 800; margin-bottom: 0.25rem;">
+        Dashboard Overview
+      </h1>
+      <p style="color: var(--text-secondary); font-size: 0.95rem;">
+        Real-time catalog metrics and platform status.
+      </p>
+    </div>
+
+    <details class="upload-select-menu" style="position: relative;">
+      <summary style="padding: 0.75rem 1.25rem; background: var(--accent-primary); color: #ffffff; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 0.5rem; user-select: none;">
+        <span>+ Select Upload Method</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="m6 9 6 6 6-6"/></svg>
+      </summary>
+      <div style="position: absolute; right: 0; top: calc(100% + 0.5rem); width: 300px; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-md); box-shadow: 0 12px 32px rgba(0,0,0,0.5); z-index: 100; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+        <a href="/admin/wallpapers/new" class="upload-menu-item">
+          <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">📄 Upload Single Master</div>
+          <div style="font-size: 0.78rem; color: var(--text-secondary);">One local master file with metadata</div>
+        </a>
+        <a href="/admin/wallpapers/bulk" class="upload-menu-item">
+          <div style="font-weight: 700; color: var(--text-primary); font-size: 0.9rem;">📁 Bulk Mass Upload</div>
+          <div style="font-size: 0.78rem; color: var(--text-secondary);">Batch upload multiple images</div>
+        </a>
+        <a href="/admin/wallpapers/import/pixabay" class="upload-menu-item">
+          <div style="font-weight: 700; color: #60a5fa; font-size: 0.9rem;">⚡ Pixabay API Import</div>
+          <div style="font-size: 0.78rem; color: var(--text-secondary);">Search & auto-import via API</div>
+        </a>
+        <a href="/admin/wallpapers/import/pinterest" class="upload-menu-item">
+          <div style="font-weight: 700; color: #f87171; font-size: 0.9rem;">📌 Pinterest Curator</div>
+          <div style="font-size: 0.78rem; color: var(--text-secondary);">Browser Bookmarklet & URL Import</div>
+        </a>
+      </div>
+    </details>
+  </div>
+
+  <!-- Metric Stat Cards Grid -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 3rem;">
+    <StatCard title="Total Wallpapers" value={stats.totalWallpapers} subtitle="In master database" />
+    <StatCard title="Published" value={stats.publishedCount} badge="Live" badgeColor="rgba(34, 197, 94, 0.2)" subtitle="Visible on public site" />
+    <StatCard title="Drafts" value={stats.draftCount} badge="Unpublished" badgeColor="rgba(234, 179, 8, 0.2)" subtitle="Pending review/publish" />
+    <StatCard title="Total Downloads" value={stats.totalDownloads} subtitle="Original master downloads" />
+    <StatCard title="Categories" value={stats.totalCategories} subtitle="Active categories" />
+  </div>
+
+  <!-- Upload Channels & Acquisition Methods -->
+  <div style="margin-bottom: 3rem;">
+    <h2 style="font-family: var(--font-heading); font-size: 1.35rem; font-weight: 700; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem;">
+      <span>Asset Acquisition & Upload Channels</span>
+    </h2>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem;">
+      
+      <a href="/admin/wallpapers/new" class="channel-card">
+        <div class="channel-icon">📄</div>
+        <div class="channel-content">
+          <h3>Single Master Upload</h3>
+          <p>Upload untouched high-resolution wallpaper file with title, tags, and category.</p>
+        </div>
+        <span class="channel-link">Upload File &rarr;</span>
+      </a>
+
+      <a href="/admin/wallpapers/bulk" class="channel-card">
+        <div class="channel-icon">📁</div>
+        <div class="channel-content">
+          <h3>Bulk Mass Upload</h3>
+          <p>Batch upload multiple image files simultaneously with auto-tagging options.</p>
+        </div>
+        <span class="channel-link">Bulk Upload &rarr;</span>
+      </a>
+
+      <a href="/admin/wallpapers/import/pixabay" class="channel-card highlight">
+        <div class="channel-icon">⚡</div>
+        <div class="channel-content">
+          <h3>Pixabay API Import <span class="badge">API Configured</span></h3>
+          <p>Search millions of 4K/8K images on Pixabay and import directly into catalog.</p>
+        </div>
+        <span class="channel-link">Search & Import &rarr;</span>
+      </a>
+
+      <a href="/admin/wallpapers/import/pinterest" class="channel-card" style="border-color: rgba(248, 113, 113, 0.3);">
+        <div class="channel-icon">📌</div>
+        <div class="channel-content">
+          <h3>Pinterest Curator <span class="badge" style="background: rgba(239, 68, 68, 0.2); color: #fca5a5;">Bookmarklet</span></h3>
+          <p>Curate high-res wallpapers directly from Pinterest using browser bookmarklet or URLs.</p>
+        </div>
+        <span class="channel-link" style="color: #f87171;">Open Curator &rarr;</span>
+      </a>
+
+    </div>
+  </div>
+
+  <!-- Recent Uploads Section -->
+  <div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 1.75rem; box-shadow: 0 10px 30px rgba(0,0,0,0.3);">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+      <h2 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700;">
+        Recent Uploads
+      </h2>
+      <a href="/admin/wallpapers" style="font-size: 0.85rem; color: var(--accent-primary); text-decoration: none; font-weight: 600;">
+        View All Wallpapers &rarr;
+      </a>
+    </div>
+
+    {recentWallpapers.length === 0 ? (
+      <div style="padding: 3rem 1rem; text-align: center; color: var(--text-muted); font-size: 0.95rem;">
+        No wallpapers in catalog yet. Click <strong>Upload Wallpaper</strong> to add your first master asset.
+      </div>
+    ) : (
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary);">
+              <th style="padding: 0.75rem 1rem;">Title</th>
+              <th style="padding: 0.75rem 1rem;">Format & Resolution</th>
+              <th style="padding: 0.75rem 1rem;">Status</th>
+              <th style="padding: 0.75rem 1rem;">Downloads</th>
+              <th style="padding: 0.75rem 1rem;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recentWallpapers.map((wp) => (
+              <tr style="border-bottom: 1px solid var(--border-subtle);">
+                <td style="padding: 1rem; font-weight: 600;">{wp.title}</td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{wp.width}x{wp.height} ({wp.resolutionLabel || 'Custom'})</td>
+                <td style="padding: 1rem;">
+                  <span style={`padding: 0.25rem 0.5rem; border-radius: var(--radius-full); font-size: 0.75rem; font-weight: 600; ${wp.status === 'published' ? 'background: rgba(34, 197, 94, 0.2); color: #86efac;' : 'background: rgba(234, 179, 8, 0.2); color: #fde047;'}`}>
+                    {wp.status}
+                  </span>
+                </td>
+                <td style="padding: 1rem; color: var(--text-secondary);">{wp.downloadCount}</td>
+                <td style="padding: 1rem;">
+                  <a href={`/admin/wallpapers/${wp.id}/edit`} style="color: var(--accent-primary); font-weight: 600; text-decoration: none; font-size: 0.85rem;">Edit</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+
+  <style>
+    .upload-select-menu summary::-webkit-details-marker {
+      display: none;
+    }
+    .upload-menu-item {
+      padding: 0.65rem 0.85rem;
+      border-radius: var(--radius-sm);
+      text-decoration: none;
+      transition: background 0.15s ease;
+      display: block;
+    }
+    .upload-menu-item:hover {
+      background: var(--bg-surface);
+    }
+    .channel-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 1.25rem;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .channel-card:hover {
+      transform: translateY(-3px);
+      border-color: var(--accent-primary);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.3);
+    }
+    .channel-card.highlight {
+      border-color: rgba(96, 165, 250, 0.4);
+      background: linear-gradient(135deg, var(--bg-surface) 0%, rgba(30, 58, 138, 0.18) 100%);
+    }
+    .channel-icon {
+      font-size: 1.75rem;
+    }
+    .channel-content h3 {
+      font-family: var(--font-heading);
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 0.35rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .channel-content p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.45;
+    }
+    .channel-link {
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--accent-primary);
+      align-self: flex-start;
+    }
+    .badge {
+      font-size: 0.65rem;
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-full);
+      background: rgba(59, 130, 246, 0.2);
+      color: #93c5fd;
+      font-weight: 600;
+    }
+  </style>
+</AdminLayout>

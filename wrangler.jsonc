@@ -1,0 +1,34 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "elysium-wallpaper-platform",
+  "main": "@astrojs/cloudflare/entrypoints/server",
+  "compatibility_date": "2026-04-15",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "elysium_db",
+      "database_id": "local-elysium-db-id",
+      "migrations_dir": "db/migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "PREVIEW_BUCKET",
+      "bucket_name": "elysium-preview-assets"
+    },
+    {
+      "binding": "ORIGINAL_BUCKET",
+      "bucket_name": "elysium-original-assets"
+    }
+  ],
+  "images": {
+    "binding": "IMAGES"
+  },
+  "vars": {
+    "SITE_TITLE": "Elysium Wallpapers",
+    "CDN_BASE_URL": ""
+  }
+}

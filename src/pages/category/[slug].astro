@@ -1,0 +1,642 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import 'lenis/dist/lenis.css';
+import { env } from 'cloudflare:workers';
+import Layout from '@/layouts/Layout.astro';
+import FilterBar from '@/components/public/FilterBar.astro';
+import WallpaperCard from '@/components/public/WallpaperCard.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Wallpaper, Category } from '@/types';
+import { explorePaginationItems } from '@/lib/explore';
+import { parseWallpaperFilters } from '@/lib/validation';
+
+const db = env.DB;
+const { slug } = Astro.params;
+
+if (!slug) {
+  return Astro.rewrite('/404');
+}
+
+const url = new URL(Astro.request.url);
+let parsedFilters;
+try {
+  parsedFilters = parseWallpaperFilters(url.searchParams, true);
+} catch {
+  return new Response('Invalid category filters', { status: 400 });
+}
+
+const currentOrientation = parsedFilters.orientation || '';
+const currentSort = parsedFilters.sortBy || 'newest';
+const currentPage = parsedFilters.page || 1;
+const pageSize = parsedFilters.limit || 20;
+
+let category: Category | null = null;
+let wallpapers: Wallpaper[] = [];
+let totalWallpapers = 0;
+let totalPages = 1;
+let databaseUnavailable = !db;
+
+if (db) {
+  try {
+    category = await DBService.getCategoryBySlug(db, slug);
+    if (!category) return Astro.rewrite('/404');
+
+    const result = await DBService.listWallpapers(db, {
+      page: currentPage,
+      limit: pageSize,
+      status: 'published',
+      categorySlug: slug,
+      orientation: currentOrientation || undefined,
+      searchQuery: parsedFilters.searchQuery,
+      tagSlug: parsedFilters.tagSlug,
+      sortBy: currentSort,
+    });
+
+    wallpapers = result.wallpapers;
+    totalWallpapers = result.total;
+    totalPages = result.totalPages;
+  } catch (error) {
+    console.error('Failed to load category gallery page:', error);
+    databaseUnavailable = true;
+    Astro.response.status = 503;
+  }
+} else {
+  Astro.response.status = 503;
+}
+
+const categoryName = category?.name || 'Category archive';
+const categoryDescription = category?.description
+  || `A curated collection of high-resolution studies classified under ${categoryName}.`;
+const resultStart = wallpapers.length > 0 ? ((currentPage - 1) * pageSize) + 1 : 0;
+const resultEnd = wallpapers.length > 0 ? resultStart + wallpapers.length - 1 : 0;
+const hasActiveFilters = Boolean(currentOrientation || currentSort !== 'newest');
+const paginationItems = explorePaginationItems(currentPage, totalPages);
+
+function getPageUrl(pageNumber: number): string {
+  const params = new URLSearchParams(url.searchParams);
+  params.set('page', pageNumber.toString());
+  return `/category/${slug}?${params.toString()}`;
+}
+---
+
+<Layout
+  title={`${categoryName} Wallpapers | Elysium`}
+  description={categoryDescription}
+  activePage="categories"
+  surface="categories-luxury"
+>
+  <section class="collection-hero" aria-labelledby="collection-title">
+    <div class="collection-frame">
+      <nav class="collection-breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/categories">Taxonomy atlas</a></li>
+          <li aria-current="page">{categoryName}</li>
+        </ol>
+        <a href="/explore">Complete archive</a>
+      </nav>
+
+      <div class="collection-hero__register" data-reveal>
+        <p>Subject collection</p>
+        <p>Taxonomy / {slug.toUpperCase()}</p>
+        <p>{hasActiveFilters ? 'Filtered sequence' : 'Complete classification'}</p>
+      </div>
+
+      <h1 id="collection-title" data-reveal>{categoryName}</h1>
+
+      <div class="collection-hero__notes" data-reveal>
+        <p>{categoryDescription}</p>
+
+        <dl>
+          <div>
+            <dt>Records</dt>
+            <dd>{String(totalWallpapers).padStart(3, '0')}</dd>
+          </div>
+          <div>
+            <dt>Visible</dt>
+            <dd>{resultStart > 0 ? `${String(resultStart).padStart(3, '0')} / ${String(resultEnd).padStart(3, '0')}` : '000 / 000'}</dd>
+          </div>
+          <div>
+            <dt>Sequence</dt>
+            <dd>{currentSort}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  {category && !databaseUnavailable && (
+    <FilterBar
+      appearance="archive"
+      action={`/category/${category.slug}`}
+      resetHref={`/category/${category.slug}`}
+      showSearch={false}
+      showCategory={false}
+      currentOrientation={currentOrientation}
+      currentSort={currentSort}
+    />
+  )}
+
+  <section class="collection-catalogue collection-frame" aria-labelledby="catalogue-title">
+    <header class="collection-heading" data-reveal>
+      <div>
+        <p>01 / Published records</p>
+        <h2 id="catalogue-title">Collection Index</h2>
+      </div>
+      <p>{totalWallpapers > 0 ? `${totalWallpapers} selected works` : 'Awaiting acquisition'}</p>
+    </header>
+
+    {databaseUnavailable ? (
+      <div class="collection-notice" role="alert" data-reveal>
+        <span>Service note / 503</span>
+        <div>
+          <h2>Collection unavailable</h2>
+          <p>This taxonomy could not be reached. Please try again shortly.</p>
+        </div>
+        <a href={Astro.url.pathname + Astro.url.search}>Retry request</a>
+      </div>
+    ) : wallpapers.length === 0 ? (
+      <div class="collection-notice" data-reveal>
+        <span>{hasActiveFilters ? 'Query returned / 000' : 'Collection state / 000'}</span>
+        <div>
+          <h2>{hasActiveFilters ? 'No match' : 'Awaiting acquisition'}</h2>
+          <p>
+            {hasActiveFilters
+              ? 'No published records match the selected format and sequence.'
+              : 'This classification is established, but no master files have been published yet.'}
+          </p>
+        </div>
+        <a href={hasActiveFilters ? `/category/${slug}` : '/categories'}>
+          {hasActiveFilters ? 'Reset collection query' : 'Return to taxonomy atlas'}
+        </a>
+      </div>
+    ) : (
+      <>
+        <ol class="collection-grid" aria-label={`${categoryName} wallpaper collection`}>
+          {wallpapers.map((wallpaper, index) => (
+            <li data-orientation={wallpaper.orientation}>
+              <WallpaperCard
+                wallpaper={wallpaper}
+                appearance="editorial"
+                priority={index === 0}
+                index={(resultStart - 1) + index}
+              />
+            </li>
+          ))}
+        </ol>
+
+        {totalPages > 1 && (
+          <nav class="collection-pagination" aria-label="Collection pagination" data-reveal>
+            <div>
+              {currentPage > 1 ? <a href={getPageUrl(currentPage - 1)} rel="prev">← Previous index</a> : <span>← Previous index</span>}
+            </div>
+
+            <div class="collection-pagination__pages">
+              {paginationItems.map((item, index) => item === 'gap' ? (
+                <span aria-hidden="true" data-gap-index={index}>···</span>
+              ) : (
+                <a href={getPageUrl(item)} aria-current={item === currentPage ? 'page' : undefined} aria-label={`Page ${item}`}>
+                  {String(item).padStart(2, '0')}
+                </a>
+              ))}
+            </div>
+
+            <div class="collection-pagination__next">
+              {currentPage < totalPages ? <a href={getPageUrl(currentPage + 1)} rel="next">Next index →</a> : <span>Next index →</span>}
+            </div>
+          </nav>
+        )}
+      </>
+    )}
+  </section>
+</Layout>
+
+<script>
+  import Lenis from 'lenis';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal], [data-image-reveal]'));
+
+  if (!reducedMotion.matches) {
+    document.documentElement.classList.add('motion-ready');
+
+    const lenis = new Lenis({
+      anchors: { offset: -138 },
+      autoRaf: true,
+      duration: 1.1,
+      easing: (time: number) => Math.min(1, 1.001 - Math.pow(2, -10 * time)),
+      smoothWheel: true,
+      stopInertiaOnNavigate: true,
+      syncTouch: false,
+      respectReducedMotion: true,
+    });
+
+    const revealObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+      : null;
+
+    requestAnimationFrame(() => {
+      if (revealObserver) revealTargets.forEach((target) => revealObserver.observe(target));
+      else revealTargets.forEach((target) => target.classList.add('is-visible'));
+    });
+
+    window.addEventListener('pagehide', () => {
+      revealObserver?.disconnect();
+      lenis.destroy();
+    }, { once: true });
+  }
+</script>
+
+<style>
+  .collection-frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding-left: var(--luxury-gutter);
+    padding-right: var(--luxury-gutter);
+  }
+
+  .collection-hero {
+    overflow: clip;
+  }
+
+  .collection-breadcrumb {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.56rem;
+    justify-content: space-between;
+    letter-spacing: 0.08em;
+    padding: 1rem 0;
+    text-transform: uppercase;
+  }
+
+  .collection-breadcrumb ol {
+    display: flex;
+    list-style: none;
+  }
+
+  .collection-breadcrumb li:not(:last-child)::after {
+    color: var(--luxury-muted);
+    content: '/';
+    margin: 0 0.65rem;
+  }
+
+  .collection-breadcrumb li:last-child {
+    color: var(--luxury-muted);
+  }
+
+  .collection-breadcrumb a {
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .collection-breadcrumb a:hover {
+    opacity: 0.6;
+  }
+
+  .collection-breadcrumb a:active {
+    transform: scale(0.98);
+  }
+
+  .collection-hero__register {
+    display: grid;
+    font-size: 0.56rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.08em;
+    padding-top: clamp(2.5rem, 5vw, 5rem);
+    text-transform: uppercase;
+  }
+
+  .collection-hero__register p:nth-child(2) {
+    text-align: center;
+  }
+
+  .collection-hero__register p:last-child {
+    color: var(--luxury-muted);
+    text-align: right;
+  }
+
+  .collection-hero h1 {
+    font-size: clamp(4rem, 11.5vw, 12.5rem);
+    font-stretch: 125%;
+    font-weight: 720;
+    letter-spacing: -0.09em;
+    line-height: 0.8;
+    margin-top: clamp(4rem, 8vw, 8rem);
+    max-width: 11ch;
+    overflow-wrap: anywhere;
+    text-transform: uppercase;
+  }
+
+  .collection-hero__notes {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding: clamp(3rem, 6vw, 6rem) 0 clamp(4rem, 8vw, 8rem);
+  }
+
+  .collection-hero__notes > p {
+    font-size: clamp(1.05rem, 1.55vw, 1.5rem);
+    font-stretch: 106%;
+    font-weight: 430;
+    grid-column: 1 / span 5;
+    letter-spacing: -0.025em;
+    line-height: 1.45;
+    max-width: 36rem;
+  }
+
+  .collection-hero__notes dl {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-column: 8 / -1;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .collection-hero__notes dl div {
+    padding-top: 0.75rem;
+  }
+
+  .collection-hero__notes dl div:not(:first-child) {
+    border-left: 1px solid var(--luxury-line);
+    padding-left: 0.75rem;
+  }
+
+  .collection-hero__notes dt,
+  .collection-heading p {
+    color: var(--luxury-muted);
+    font-size: 0.54rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .collection-hero__notes dd {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    margin: 1rem 0 0;
+    text-transform: capitalize;
+  }
+
+  .collection-catalogue {
+    padding-bottom: var(--luxury-space);
+    padding-top: var(--luxury-space);
+  }
+
+  .collection-heading {
+    align-items: end;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(3.5rem, 7vw, 7rem);
+    padding-bottom: 1rem;
+  }
+
+  .collection-heading > div {
+    grid-column: 1 / span 9;
+  }
+
+  .collection-heading h2 {
+    font-size: clamp(2.6rem, 6vw, 6.75rem);
+    font-stretch: 120%;
+    font-weight: 620;
+    letter-spacing: -0.075em;
+    line-height: 0.88;
+    margin-top: 1.5rem;
+  }
+
+  .collection-heading > p {
+    grid-column: 10 / -1;
+    text-align: right;
+  }
+
+  .collection-grid {
+    align-items: start;
+    display: grid;
+    gap: clamp(3.5rem, 7vw, 8rem) clamp(1rem, 2vw, 2rem);
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    list-style: none;
+  }
+
+  .collection-grid > li {
+    grid-column: span 3;
+    min-width: 0;
+  }
+
+  .collection-grid > li[data-orientation='landscape'] {
+    grid-column: span 6;
+  }
+
+  .collection-notice {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding: clamp(2rem, 4vw, 4rem) 0;
+  }
+
+  .collection-notice > span {
+    color: var(--luxury-muted);
+    font-size: 0.54rem;
+    grid-column: 1 / span 3;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .collection-notice > div {
+    grid-column: 4 / span 6;
+  }
+
+  .collection-notice h2 {
+    font-size: clamp(2.75rem, 7vw, 8rem);
+    font-stretch: 120%;
+    font-weight: 620;
+    letter-spacing: -0.075em;
+    line-height: 0.86;
+    text-transform: uppercase;
+  }
+
+  .collection-notice p {
+    color: var(--luxury-muted);
+    font-size: 0.8rem;
+    line-height: 1.55;
+    margin-top: 1.5rem;
+  }
+
+  .collection-notice > a {
+    border-bottom: 1px solid currentColor;
+    font-size: 0.65rem;
+    grid-column: 10 / -1;
+    padding-bottom: 0.4rem;
+  }
+
+  .collection-pagination {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.65rem;
+    grid-template-columns: 3fr 6fr 3fr;
+    margin-top: var(--luxury-space);
+    min-height: 5rem;
+  }
+
+  .collection-pagination__next {
+    text-align: right;
+  }
+
+  .collection-pagination > div > span {
+    color: var(--luxury-muted);
+  }
+
+  .collection-pagination__pages {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+  }
+
+  .collection-pagination__pages a,
+  .collection-pagination__pages > span {
+    align-items: center;
+    display: inline-flex;
+    height: 2.35rem;
+    justify-content: center;
+    min-width: 2.35rem;
+  }
+
+  .collection-pagination__pages a[aria-current='page'] {
+    background: var(--luxury-ink);
+    color: var(--luxury-paper);
+  }
+
+  :global(html.motion-ready [data-reveal]) {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition: opacity 750ms cubic-bezier(0.22, 1, 0.36, 1), transform 750ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-image-reveal] > *) {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal].is-visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(html.motion-ready [data-image-reveal].is-visible > *) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (max-width: 1100px) {
+    .collection-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .collection-grid > li {
+      grid-column: span 3;
+    }
+
+    .collection-grid > li[data-orientation='landscape'] {
+      grid-column: span 6;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .collection-breadcrumb > a {
+      display: none;
+    }
+
+    .collection-hero__register {
+      gap: 0.45rem;
+      grid-template-columns: 1fr;
+    }
+
+    .collection-hero__register p:nth-child(2),
+    .collection-hero__register p:last-child {
+      text-align: left;
+    }
+
+    .collection-hero h1 {
+      font-size: clamp(3.75rem, 20vw, 6.5rem);
+      margin-top: 4.5rem;
+    }
+
+    .collection-hero__notes {
+      display: block;
+      padding-bottom: 4.5rem;
+    }
+
+    .collection-hero__notes dl {
+      margin-top: 3rem;
+    }
+
+    .collection-catalogue {
+      padding-bottom: 5.5rem;
+      padding-top: 5.5rem;
+    }
+
+    .collection-heading {
+      display: block;
+      margin-bottom: 4rem;
+    }
+
+    .collection-heading > p {
+      margin-top: 1.5rem;
+      text-align: left;
+    }
+
+    .collection-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .collection-grid > li,
+    .collection-grid > li[data-orientation='landscape'] {
+      grid-column: span 4;
+    }
+
+    .collection-notice {
+      display: block;
+    }
+
+    .collection-notice > div,
+    .collection-notice > a {
+      display: block;
+      margin-top: 3rem;
+    }
+
+    .collection-pagination {
+      gap: 1.5rem;
+      grid-template-columns: 1fr 1fr;
+      padding: 1.25rem 0;
+    }
+
+    .collection-pagination__pages {
+      grid-column: 1 / -1;
+      grid-row: 1;
+    }
+
+    .collection-pagination > div:first-child {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .collection-pagination__next {
+      grid-column: 2;
+      grid-row: 2;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-reveal]),
+    :global([data-image-reveal]),
+    :global([data-image-reveal] > *) {
+      clip-path: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

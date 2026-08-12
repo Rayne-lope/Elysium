@@ -1,0 +1,810 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import 'lenis/dist/lenis.css';
+import { env } from 'cloudflare:workers';
+import Layout from '@/layouts/Layout.astro';
+import FilterBar from '@/components/public/FilterBar.astro';
+import WallpaperCard from '@/components/public/WallpaperCard.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Wallpaper, Category } from '@/types';
+import { explorePaginationItems } from '@/lib/explore';
+import {
+  buildSearchPageUrl,
+  buildSearchResetUrl,
+  searchQueryScale,
+  searchResultRange,
+} from '@/lib/search';
+import { parseWallpaperFilters } from '@/lib/validation';
+
+const db = env.DB;
+const url = new URL(Astro.request.url);
+
+let parsedFilters;
+try {
+  parsedFilters = parseWallpaperFilters(url.searchParams, true);
+} catch {
+  return new Response('Invalid search filters', { status: 400 });
+}
+
+const searchQuery = parsedFilters.searchQuery || '';
+const currentCategory = parsedFilters.categorySlug || '';
+const currentOrientation = parsedFilters.orientation || '';
+const currentSort = parsedFilters.sortBy || 'newest';
+const currentTag = parsedFilters.tagSlug || '';
+const currentPage = parsedFilters.page || 1;
+const pageSize = parsedFilters.limit || 20;
+const hasQuery = searchQuery.length > 0;
+
+let wallpapers: Wallpaper[] = [];
+let categories: Category[] = [];
+let totalWallpapers = 0;
+let totalPages = 1;
+let databaseUnavailable = !db;
+
+if (db) {
+  try {
+    if (hasQuery) {
+      const [categoryResult, wallpaperResult] = await Promise.all([
+        DBService.getCategories(db),
+        DBService.listWallpapers(db, parsedFilters),
+      ]);
+      categories = categoryResult;
+      wallpapers = wallpaperResult.wallpapers;
+      totalWallpapers = wallpaperResult.total;
+      totalPages = wallpaperResult.totalPages;
+    } else {
+      categories = await DBService.getCategories(db);
+    }
+  } catch (error) {
+    console.error('Failed to execute Search ledger query:', error);
+    databaseUnavailable = true;
+    Astro.response.status = 503;
+  }
+} else {
+  Astro.response.status = 503;
+}
+
+const { start: resultStart, end: resultEnd } = searchResultRange(
+  currentPage,
+  pageSize,
+  wallpapers.length,
+);
+const secondaryFilterCount = [
+  currentCategory,
+  currentOrientation,
+  currentSort !== 'newest' ? currentSort : '',
+  currentTag,
+].filter(Boolean).length;
+const hasSecondaryFilters = secondaryFilterCount > 0;
+const paginationItems = explorePaginationItems(currentPage, totalPages);
+const resetHref = buildSearchResetUrl(url.searchParams);
+const queryScale = searchQueryScale(searchQuery);
+const displayQuery = searchQuery || 'SEARCH';
+
+function getPageUrl(pageNumber: number): string {
+  return buildSearchPageUrl(url.searchParams, pageNumber);
+}
+---
+
+<Layout
+  title={hasQuery ? `Search results for "${searchQuery}" | Elysium` : 'Search the Wallpaper Archive | Elysium'}
+  description={hasQuery
+    ? `Browse high-resolution master wallpapers matching ${searchQuery}.`
+    : 'Search the Elysium archive of high-resolution wallpaper masters.'}
+  activePage="search"
+  surface="search-luxury"
+>
+  <section class="search-ledger-hero" aria-labelledby="search-ledger-title">
+    <div class="search-ledger-frame">
+      <div class="search-ledger-register" data-reveal>
+        <p>Search apparatus</p>
+        <p>Query / {hasQuery ? '001' : '000'}</p>
+        <p>{hasQuery ? `${secondaryFilterCount} scoped parameters` : 'Awaiting entry'}</p>
+      </div>
+
+      <h1 id="search-ledger-title" data-query-scale={queryScale} data-reveal>{displayQuery}</h1>
+
+      <div class="search-ledger-console">
+        <form action="/search" method="GET" role="search" class="search-ledger-composer" data-reveal>
+          <label for="ledger-query">Search the archive</label>
+          <div>
+            <input
+              id="ledger-query"
+              type="search"
+              name="q"
+              value={searchQuery}
+              placeholder="Enter a title, subject, or visual term"
+              maxlength="100"
+              required
+              autocomplete="off"
+            />
+            <input type="hidden" name="page" value="1" />
+            <button type="submit">
+              Run search
+              <span aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </form>
+
+        <dl class="search-ledger-metrics" data-reveal>
+          <div>
+            <dt>Matches</dt>
+            <dd>{hasQuery ? String(totalWallpapers).padStart(3, '0') : '000'}</dd>
+          </div>
+          <div>
+            <dt>Visible</dt>
+            <dd>{resultStart > 0 ? `${String(resultStart).padStart(3, '0')} / ${String(resultEnd).padStart(3, '0')}` : '000 / 000'}</dd>
+          </div>
+          <div>
+            <dt>Sequence</dt>
+            <dd>{currentSort}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  {hasQuery && !databaseUnavailable && (
+    <FilterBar
+      appearance="archive"
+      action="/search"
+      resetHref={resetHref}
+      resetLabel="Clear filters ×"
+      statusLabel="Search scope"
+      idleSummary="All formats · All categories · Newest sequence"
+      showSearch={false}
+      categories={categories}
+      currentCategory={currentCategory}
+      currentOrientation={currentOrientation}
+      currentSort={currentSort}
+      currentSearch={searchQuery}
+      currentTag={currentTag}
+    />
+  )}
+
+  <section class="search-results search-ledger-frame" aria-labelledby="search-results-title">
+    <header class="search-results-heading" data-reveal>
+      <div>
+        <p>{hasQuery ? '01 / Search evidence' : '00 / Search entry'}</p>
+        <h2 id="search-results-title">{hasQuery ? 'Matched Records' : 'Archive Search'}</h2>
+      </div>
+      <p>
+        {databaseUnavailable
+          ? 'Archive connection unavailable'
+          : !hasQuery
+            ? 'No query submitted'
+            : totalWallpapers === 0
+              ? 'No matching records'
+              : `${totalWallpapers.toLocaleString('en-US')} selected works`}
+      </p>
+    </header>
+
+    {databaseUnavailable ? (
+      <div class="search-notice" role="alert" data-reveal>
+        <span>Service note / 503</span>
+        <div>
+          <h2>Search unavailable</h2>
+          <p>The archive connection could not be established. Your query has not been changed.</p>
+        </div>
+        <a href={Astro.url.pathname + Astro.url.search}>Retry request</a>
+      </div>
+    ) : !hasQuery ? (
+      <div class="search-notice" data-reveal>
+        <span>Ledger state / 000</span>
+        <div>
+          <h2>Awaiting entry</h2>
+          <p>Enter a title, subject, material, or visual term to begin searching the published archive.</p>
+        </div>
+        <a href="/explore">Browse complete archive</a>
+      </div>
+    ) : wallpapers.length === 0 ? (
+      <div class="search-notice" data-reveal>
+        <span>Query returned / 000</span>
+        <div>
+          <h2>{hasSecondaryFilters ? 'No scoped match' : 'No match'}</h2>
+          <p>
+            {hasSecondaryFilters
+              ? 'No published records match this query within the selected format, category, or sequence.'
+              : 'Try a broader visual term, verify the spelling, or browse the complete archive.'}
+          </p>
+        </div>
+        <a href={hasSecondaryFilters ? resetHref : '/explore'}>
+          {hasSecondaryFilters ? 'Clear search filters' : 'Browse complete archive'}
+        </a>
+      </div>
+    ) : (
+      <>
+        <ol class="search-results-grid" aria-label={`Wallpaper results for ${searchQuery}`}>
+          {wallpapers.map((wallpaper, index) => (
+            <li data-orientation={wallpaper.orientation}>
+              <WallpaperCard
+                wallpaper={wallpaper}
+                appearance="editorial"
+                priority={index === 0}
+                index={(resultStart - 1) + index}
+              />
+            </li>
+          ))}
+        </ol>
+
+        {totalPages > 1 && (
+          <nav class="search-pagination" aria-label="Search result pagination" data-reveal>
+            <div class="search-pagination-direction">
+              {currentPage > 1 ? (
+                <a href={getPageUrl(currentPage - 1)} rel="prev">← Previous results</a>
+              ) : (
+                <span>← Previous results</span>
+              )}
+            </div>
+
+            <div class="search-pagination-pages">
+              {paginationItems.map((item, index) => item === 'gap' ? (
+                <span aria-hidden="true" data-gap-index={index}>···</span>
+              ) : (
+                <a
+                  href={getPageUrl(item)}
+                  aria-current={item === currentPage ? 'page' : undefined}
+                  aria-label={`Page ${item}`}
+                >
+                  {String(item).padStart(2, '0')}
+                </a>
+              ))}
+            </div>
+
+            <div class="search-pagination-direction search-pagination-direction--next">
+              {currentPage < totalPages ? (
+                <a href={getPageUrl(currentPage + 1)} rel="next">Next results →</a>
+              ) : (
+                <span>Next results →</span>
+              )}
+            </div>
+
+            <p>Page {String(currentPage).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}</p>
+          </nav>
+        )}
+      </>
+    )}
+  </section>
+</Layout>
+
+<script>
+  import Lenis from 'lenis';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal], [data-image-reveal]'));
+
+  if (!reducedMotion.matches) {
+    document.documentElement.classList.add('motion-ready');
+
+    const lenis = new Lenis({
+      anchors: { offset: -138 },
+      autoRaf: true,
+      duration: 1.1,
+      easing: (time: number) => Math.min(1, 1.001 - Math.pow(2, -10 * time)),
+      smoothWheel: true,
+      stopInertiaOnNavigate: true,
+      syncTouch: false,
+      respectReducedMotion: true,
+    });
+
+    const revealObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+      : null;
+
+    requestAnimationFrame(() => {
+      if (revealObserver) revealTargets.forEach((target) => revealObserver.observe(target));
+      else revealTargets.forEach((target) => target.classList.add('is-visible'));
+    });
+
+    window.addEventListener('pagehide', () => {
+      revealObserver?.disconnect();
+      lenis.destroy();
+    }, { once: true });
+  }
+</script>
+
+<style>
+  .search-ledger-frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding-left: var(--luxury-gutter);
+    padding-right: var(--luxury-gutter);
+  }
+
+  .search-ledger-hero {
+    overflow: clip;
+  }
+
+  .search-ledger-register {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.56rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.08em;
+    padding: 1rem 0;
+    text-transform: uppercase;
+  }
+
+  .search-ledger-register p:nth-child(2) {
+    text-align: center;
+  }
+
+  .search-ledger-register p:last-child {
+    color: var(--luxury-muted);
+    text-align: right;
+  }
+
+  .search-ledger-hero h1 {
+    font-size: clamp(4.5rem, 13.4vw, 15rem);
+    font-stretch: 125%;
+    font-weight: 735;
+    letter-spacing: -0.095em;
+    line-height: 0.8;
+    overflow-wrap: anywhere;
+    padding: clamp(5rem, 10vw, 10rem) 0 clamp(3rem, 6vw, 6rem);
+    text-transform: uppercase;
+  }
+
+  .search-ledger-hero h1[data-query-scale='empty'] {
+    font-size: clamp(4.6rem, 16.1vw, 17rem);
+    white-space: nowrap;
+  }
+
+  .search-ledger-hero h1[data-query-scale='medium'] {
+    font-size: clamp(3.7rem, 9vw, 9.5rem);
+    line-height: 0.84;
+  }
+
+  .search-ledger-hero h1[data-query-scale='long'] {
+    font-size: clamp(2.7rem, 5.7vw, 6.25rem);
+    letter-spacing: -0.075em;
+    line-height: 0.9;
+  }
+
+  .search-ledger-console {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding-bottom: clamp(4rem, 8vw, 8rem);
+  }
+
+  .search-ledger-composer {
+    grid-column: 1 / span 6;
+  }
+
+  .search-ledger-composer > label {
+    color: var(--luxury-muted);
+    display: block;
+    font-size: 0.54rem;
+    letter-spacing: 0.09em;
+    margin-bottom: 0.7rem;
+    text-transform: uppercase;
+  }
+
+  .search-ledger-composer > div {
+    align-items: stretch;
+    border-bottom: 1px solid var(--luxury-ink);
+    display: grid;
+    grid-template-columns: 1fr auto;
+  }
+
+  .search-ledger-composer input[type='search'] {
+    background: transparent;
+    border: 0;
+    color: var(--luxury-ink);
+    font: inherit;
+    font-size: clamp(1.15rem, 2.2vw, 2.15rem);
+    font-stretch: 108%;
+    letter-spacing: -0.045em;
+    min-width: 0;
+    outline: 0;
+    padding: 0.6rem 1rem 0.75rem 0;
+    width: 100%;
+  }
+
+  .search-ledger-composer input::placeholder {
+    color: var(--luxury-muted);
+    opacity: 0.72;
+  }
+
+  .search-ledger-composer button {
+    align-items: center;
+    background: var(--luxury-ink);
+    border: 0;
+    color: var(--luxury-paper);
+    cursor: pointer;
+    display: flex;
+    font: inherit;
+    font-size: 0.65rem;
+    gap: 2rem;
+    padding: 0.8rem 1rem;
+    transition: background-color 220ms ease, transform 220ms ease;
+  }
+
+  .search-ledger-composer button:hover {
+    background: var(--luxury-muted);
+  }
+
+  .search-ledger-composer button:active {
+    transform: scale(0.985);
+  }
+
+  .search-ledger-metrics {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-column: 8 / -1;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .search-ledger-metrics div {
+    padding-top: 0.75rem;
+  }
+
+  .search-ledger-metrics div:not(:first-child) {
+    border-left: 1px solid var(--luxury-line);
+    padding-left: 0.75rem;
+  }
+
+  .search-ledger-metrics dt,
+  .search-results-heading p {
+    color: var(--luxury-muted);
+    font-size: 0.54rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .search-ledger-metrics dd {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    margin-top: 1rem;
+    text-transform: capitalize;
+  }
+
+  .search-results {
+    padding-bottom: var(--luxury-space);
+    padding-top: var(--luxury-space);
+  }
+
+  .search-results-heading {
+    align-items: end;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(3.5rem, 7vw, 7rem);
+    padding-bottom: 1rem;
+  }
+
+  .search-results-heading > div {
+    grid-column: 1 / span 9;
+  }
+
+  .search-results-heading h2 {
+    font-size: clamp(2.6rem, 6vw, 6.75rem);
+    font-stretch: 120%;
+    font-weight: 620;
+    letter-spacing: -0.075em;
+    line-height: 0.88;
+    margin-top: 1.5rem;
+  }
+
+  .search-results-heading > p {
+    grid-column: 10 / -1;
+    text-align: right;
+  }
+
+  .search-results-grid {
+    align-items: start;
+    display: grid;
+    gap: clamp(3.5rem, 7vw, 8rem) clamp(1rem, 2vw, 2rem);
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    list-style: none;
+  }
+
+  .search-results-grid > li {
+    grid-column: span 3;
+    min-width: 0;
+  }
+
+  .search-results-grid > li[data-orientation='landscape'] {
+    grid-column: span 6;
+  }
+
+  .search-notice {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding: clamp(2rem, 4vw, 4rem) 0;
+  }
+
+  .search-notice > span {
+    color: var(--luxury-muted);
+    font-size: 0.54rem;
+    grid-column: 1 / span 3;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .search-notice > div {
+    grid-column: 4 / span 6;
+  }
+
+  .search-notice h2 {
+    font-size: clamp(2.75rem, 7vw, 8rem);
+    font-stretch: 120%;
+    font-weight: 620;
+    letter-spacing: -0.075em;
+    line-height: 0.86;
+    text-transform: uppercase;
+  }
+
+  .search-notice p {
+    color: var(--luxury-muted);
+    font-size: 0.8rem;
+    line-height: 1.55;
+    margin-top: 1.5rem;
+    max-width: 34rem;
+  }
+
+  .search-notice > a {
+    border-bottom: 1px solid currentColor;
+    font-size: 0.65rem;
+    grid-column: 10 / -1;
+    padding-bottom: 0.4rem;
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .search-notice > a:hover {
+    opacity: 0.6;
+  }
+
+  .search-notice > a:active {
+    transform: scale(0.985);
+  }
+
+  .search-pagination {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: 3fr 6fr 3fr;
+    margin-top: var(--luxury-space);
+    min-height: 5rem;
+    position: relative;
+  }
+
+  .search-pagination-direction {
+    font-size: 0.65rem;
+  }
+
+  .search-pagination-direction--next {
+    text-align: right;
+  }
+
+  .search-pagination-direction a {
+    display: inline-block;
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .search-pagination-direction a:hover {
+    opacity: 0.6;
+  }
+
+  .search-pagination-direction a:active {
+    transform: scale(0.98);
+  }
+
+  .search-pagination-direction > span {
+    color: var(--luxury-muted);
+  }
+
+  .search-pagination-pages {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+  }
+
+  .search-pagination-pages a,
+  .search-pagination-pages > span {
+    align-items: center;
+    display: inline-flex;
+    font-size: 0.62rem;
+    height: 2.35rem;
+    justify-content: center;
+    min-width: 2.35rem;
+  }
+
+  .search-pagination-pages a {
+    border: 1px solid transparent;
+    transition: border-color 200ms ease, transform 200ms ease;
+  }
+
+  .search-pagination-pages a:hover {
+    border-color: var(--luxury-line);
+  }
+
+  .search-pagination-pages a[aria-current='page'] {
+    background: var(--luxury-ink);
+    color: var(--luxury-paper);
+  }
+
+  .search-pagination-pages a:active {
+    transform: scale(0.95);
+  }
+
+  .search-pagination-pages > span {
+    color: var(--luxury-muted);
+  }
+
+  .search-pagination > p {
+    bottom: 0.45rem;
+    color: var(--luxury-muted);
+    font-size: 0.48rem;
+    left: 50%;
+    letter-spacing: 0.08em;
+    position: absolute;
+    text-transform: uppercase;
+    transform: translateX(-50%);
+  }
+
+  :global(html.motion-ready [data-reveal]) {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition: opacity 750ms cubic-bezier(0.22, 1, 0.36, 1), transform 750ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-image-reveal] > *) {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal].is-visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(html.motion-ready [data-image-reveal].is-visible > *) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (max-width: 1100px) {
+    .search-ledger-composer {
+      grid-column: 1 / span 6;
+    }
+
+    .search-ledger-metrics {
+      grid-column: 7 / -1;
+    }
+
+    .search-results-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .search-results-grid > li {
+      grid-column: span 3;
+    }
+
+    .search-results-grid > li[data-orientation='landscape'] {
+      grid-column: span 6;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .search-ledger-register {
+      gap: 0.45rem;
+      grid-template-columns: 1fr;
+    }
+
+    .search-ledger-register p:nth-child(2),
+    .search-ledger-register p:last-child {
+      text-align: left;
+    }
+
+    .search-ledger-hero h1,
+    .search-ledger-hero h1[data-query-scale='empty'] {
+      font-size: clamp(3.7rem, 20vw, 6.5rem);
+      line-height: 0.84;
+      padding-bottom: 3.75rem;
+      padding-top: 5rem;
+      white-space: normal;
+    }
+
+    .search-ledger-hero h1[data-query-scale='medium'] {
+      font-size: clamp(3.25rem, 15vw, 5.25rem);
+    }
+
+    .search-ledger-hero h1[data-query-scale='long'] {
+      font-size: clamp(2.6rem, 11vw, 4.25rem);
+    }
+
+    .search-ledger-console {
+      display: block;
+      padding-bottom: 4.5rem;
+    }
+
+    .search-ledger-composer > div {
+      display: block;
+    }
+
+    .search-ledger-composer button {
+      justify-content: space-between;
+      margin-top: 0.75rem;
+      width: 100%;
+    }
+
+    .search-ledger-metrics {
+      margin-top: 3rem;
+    }
+
+    .search-results {
+      padding-bottom: 5.5rem;
+      padding-top: 5.5rem;
+    }
+
+    .search-results-heading {
+      display: block;
+      margin-bottom: 4rem;
+    }
+
+    .search-results-heading > p {
+      margin-top: 1.5rem;
+      text-align: left;
+    }
+
+    .search-results-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .search-results-grid > li,
+    .search-results-grid > li[data-orientation='landscape'] {
+      grid-column: span 4;
+    }
+
+    .search-notice {
+      display: block;
+    }
+
+    .search-notice > div,
+    .search-notice > a {
+      display: block;
+      margin-top: 3rem;
+    }
+
+    .search-pagination {
+      gap: 1.5rem;
+      grid-template-columns: 1fr 1fr;
+      padding: 1.25rem 0 2.25rem;
+    }
+
+    .search-pagination-pages {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      overflow-x: auto;
+    }
+
+    .search-pagination-direction {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .search-pagination-direction--next {
+      grid-column: 2;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-reveal]),
+    :global([data-image-reveal]),
+    :global([data-image-reveal] > *) {
+      clip-path: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

@@ -1,0 +1,387 @@
+---
+import type { Category } from '@/types';
+import ArchiveFilterFields from './ArchiveFilterFields.astro';
+
+interface Props {
+  categories?: Category[];
+  currentCategory?: string;
+  currentOrientation?: string;
+  currentSort?: string;
+  currentSearch?: string;
+  currentTag?: string;
+  appearance?: 'default' | 'archive';
+  action?: string;
+  showSearch?: boolean;
+  showCategory?: boolean;
+  showSort?: boolean;
+  resetHref?: string;
+  statusLabel?: string;
+  idleSummary?: string;
+  resetLabel?: string;
+}
+
+const {
+  categories = [],
+  currentCategory = '',
+  currentOrientation = '',
+  currentSort = 'newest',
+  currentSearch = '',
+  currentTag = '',
+  appearance = 'default',
+  action = '/explore',
+  showSearch = true,
+  showCategory = true,
+  showSort = true,
+  resetHref: providedResetHref,
+  statusLabel = 'Archive query',
+  idleSummary = 'All published records · Newest acquisitions',
+  resetLabel = 'Reset all ×',
+} = Astro.props;
+const resetHref = providedResetHref || action.split('?')[0] || '/explore';
+
+const hasActiveFilters = Boolean(
+  (showCategory && currentCategory)
+  || currentOrientation
+  || (showSort && currentSort && currentSort !== 'newest')
+  || (showSearch && currentSearch)
+  || currentTag
+);
+const currentCategoryName = categories.find((category) => category.slug === currentCategory)?.name || currentCategory;
+const activeFilterLabels = [
+  showSearch && currentSearch ? `Search: "${currentSearch}"` : '',
+  showCategory && currentCategory ? `Category: ${currentCategoryName}` : '',
+  currentOrientation ? `Format: ${currentOrientation}` : '',
+  showSort && currentSort !== 'newest' ? `Sequence: ${currentSort}` : '',
+  currentTag ? `Tag: #${currentTag}` : '',
+].filter(Boolean);
+const requestSearch = new URL(Astro.request.url).search;
+---
+
+{appearance === 'archive' ? (
+  <section class="archive-filter-shell" aria-label="Catalogue controls">
+    <div class="archive-filter-desktop">
+      <ArchiveFilterFields
+        categories={categories}
+        currentCategory={currentCategory}
+        currentOrientation={currentOrientation}
+        currentSort={currentSort}
+        currentSearch={currentSearch}
+        currentTag={currentTag}
+        requestSearch={requestSearch}
+        idPrefix="desktop-archive"
+        action={action}
+        showSearch={showSearch}
+        showCategory={showCategory}
+        showSort={showSort}
+      />
+    </div>
+
+    <details class="archive-filter-mobile" open={hasActiveFilters}>
+      <summary>
+        <span>Catalogue controls</span>
+        <span>{hasActiveFilters ? `${activeFilterLabels.length} active` : 'Open filters'}</span>
+      </summary>
+      <ArchiveFilterFields
+        categories={categories}
+        currentCategory={currentCategory}
+        currentOrientation={currentOrientation}
+        currentSort={currentSort}
+        currentSearch={currentSearch}
+        currentTag={currentTag}
+        requestSearch={requestSearch}
+        idPrefix="mobile-archive"
+        action={action}
+        showSearch={showSearch}
+        showCategory={showCategory}
+        showSort={showSort}
+      />
+    </details>
+
+    <div class="archive-filter-status">
+      <span>{hasActiveFilters ? 'Active query' : statusLabel}</span>
+      <p>{hasActiveFilters ? activeFilterLabels.join(' · ') : idleSummary}</p>
+      {hasActiveFilters ? <a href={resetHref}>{resetLabel}</a> : <span>Page resets when filters change</span>}
+    </div>
+  </section>
+) : (
+  <div class="default-filter-shell">
+    <form action="/explore" method="GET" class="default-filter-form">
+      {currentOrientation && <input type="hidden" name="orientation" value={currentOrientation} />}
+      {currentSearch && <input type="hidden" name="q" value={currentSearch} />}
+
+      <div class="default-filter-left">
+        <div class="orientation-group">
+          <a
+            href={`/explore?${new URLSearchParams({ ...Object.fromEntries(new URL(Astro.request.url).searchParams), orientation: '', page: '1' })}`}
+            class={!currentOrientation ? 'orient-pill active' : 'orient-pill'}
+          >
+            All
+          </a>
+          <a
+            href={`/explore?${new URLSearchParams({ ...Object.fromEntries(new URL(Astro.request.url).searchParams), orientation: 'landscape', page: '1' })}`}
+            class={currentOrientation === 'landscape' ? 'orient-pill active' : 'orient-pill'}
+          >
+            Desktop
+          </a>
+          <a
+            href={`/explore?${new URLSearchParams({ ...Object.fromEntries(new URL(Astro.request.url).searchParams), orientation: 'portrait', page: '1' })}`}
+            class={currentOrientation === 'portrait' ? 'orient-pill active' : 'orient-pill'}
+          >
+            Mobile
+          </a>
+          <a
+            href={`/explore?${new URLSearchParams({ ...Object.fromEntries(new URL(Astro.request.url).searchParams), orientation: 'square', page: '1' })}`}
+            class={currentOrientation === 'square' ? 'orient-pill active' : 'orient-pill'}
+          >
+            Square
+          </a>
+        </div>
+
+        <select name="category" aria-label="Filter by category" class="default-select">
+          <option value="">All Categories</option>
+          {categories.map((category) => (
+            <option value={category.slug} selected={category.slug === currentCategory}>{category.name}</option>
+          ))}
+        </select>
+      </div>
+
+      <div class="default-filter-right">
+        <select name="sort" aria-label="Sort wallpapers" class="default-select">
+          <option value="newest" selected={currentSort === 'newest'}>Newest Additions</option>
+          <option value="popular" selected={currentSort === 'popular'}>Most Downloaded</option>
+          <option value="featured" selected={currentSort === 'featured'}>Featured First</option>
+        </select>
+
+        <button type="submit" class="default-apply">Apply</button>
+
+        {hasActiveFilters && <a href="/explore" class="default-reset">Reset ×</a>}
+      </div>
+    </form>
+  </div>
+)}
+
+<script>
+  import { buildCatalogueSubmissionUrl } from '@/lib/explore';
+
+  for (const form of document.querySelectorAll<HTMLFormElement>('[data-archive-filter-form]')) {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const formData = new FormData(form);
+      const action = form.getAttribute('action') || '/explore';
+      window.location.assign(buildCatalogueSubmissionUrl(action, formData.entries()));
+    });
+  }
+</script>
+
+<style>
+  .archive-filter-shell {
+    background: var(--luxury-paper);
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    margin: 0;
+    padding: 0 0 0 var(--luxury-gutter);
+    position: sticky;
+    top: 76px;
+    z-index: 80;
+  }
+
+  .archive-filter-mobile {
+    display: none;
+  }
+
+  .archive-filter-status {
+    align-items: center;
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.55rem;
+    gap: 1rem;
+    grid-template-columns: 1fr 8fr 3fr;
+    letter-spacing: 0.04em;
+    min-height: 2.15rem;
+    margin-right: var(--luxury-gutter);
+    text-transform: uppercase;
+  }
+
+  .archive-filter-status > span:first-child,
+  .archive-filter-status > span:last-child {
+    color: var(--luxury-muted);
+  }
+
+  .archive-filter-status > span:last-child,
+  .archive-filter-status > a {
+    justify-self: end;
+  }
+
+  .archive-filter-status > a {
+    text-decoration: underline;
+    text-underline-offset: 0.25em;
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .archive-filter-status > a:hover {
+    opacity: 0.6;
+  }
+
+  .archive-filter-status > a:active {
+    transform: scale(0.98);
+  }
+
+  .default-filter-shell {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    margin-bottom: 2.5rem;
+    padding: 1.25rem 1.5rem;
+  }
+
+  .default-filter-form,
+  .default-filter-left,
+  .default-filter-right {
+    align-items: center;
+    display: flex;
+  }
+
+  .default-filter-form {
+    flex-wrap: wrap;
+    gap: 1rem;
+    justify-content: space-between;
+  }
+
+  .default-filter-left {
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .default-filter-right {
+    gap: 0.75rem;
+  }
+
+  .orientation-group {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    display: inline-flex;
+    padding: 0.25rem;
+  }
+
+  .orient-pill {
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 0.825rem;
+    font-weight: 600;
+    padding: 0.35rem 0.875rem;
+    transition: var(--transition-fast);
+  }
+
+  .orient-pill:hover {
+    color: var(--text-primary);
+  }
+
+  .orient-pill.active {
+    background: var(--accent-primary);
+    color: #ffffff;
+  }
+
+  .default-select {
+    background: var(--bg-surface-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 0.875rem;
+    outline: none;
+    padding: 0.5rem 1rem;
+  }
+
+  .default-apply {
+    background: var(--accent-primary);
+    border: 0;
+    border-radius: var(--radius-full);
+    color: #ffffff;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 0.5rem 0.9rem;
+  }
+
+  .default-reset {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: var(--radius-full);
+    color: #fca5a5;
+    font-size: 0.85rem;
+    font-weight: 600;
+    padding: 0.4rem 0.875rem;
+    transition: var(--transition-fast);
+  }
+
+  @media (max-width: 960px) {
+    .archive-filter-shell {
+      top: 68px;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .archive-filter-shell {
+      padding-right: var(--luxury-gutter);
+    }
+
+    .archive-filter-desktop {
+      display: none;
+    }
+
+    .archive-filter-mobile {
+      display: block;
+    }
+
+    .archive-filter-mobile summary {
+      align-items: center;
+      cursor: pointer;
+      display: flex;
+      font-size: 0.62rem;
+      justify-content: space-between;
+      list-style: none;
+      min-height: 3rem;
+      text-transform: uppercase;
+    }
+
+    .archive-filter-mobile summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .archive-filter-mobile summary span:last-child {
+      color: var(--luxury-muted);
+    }
+
+    .archive-filter-mobile summary span:last-child::after {
+      color: var(--luxury-ink);
+      content: '+';
+      margin-left: 0.65rem;
+    }
+
+    .archive-filter-mobile[open] summary span:last-child::after {
+      content: '−';
+    }
+
+    .archive-filter-status {
+      gap: 0.35rem;
+      grid-template-columns: 1fr auto;
+      padding: 0.6rem 0;
+      margin-right: 0;
+    }
+
+    .archive-filter-status > p {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      line-height: 1.45;
+    }
+
+    .archive-filter-status > span:last-child,
+    .archive-filter-status > a {
+      grid-column: 2;
+      grid-row: 1;
+    }
+  }
+</style>

@@ -1,0 +1,74 @@
+---
+import { env } from 'cloudflare:workers';
+import type { Wallpaper } from '@/types';
+import { capSourceSet, responsivePreviewSources } from '@/lib/preview-assets';
+
+interface Props {
+  wallpaper: Pick<Wallpaper,
+    'title' | 'width' | 'height' | 'preview480Key' | 'preview960Key' | 'preview1600Key' | 'previewFallbackKey'>;
+  alt?: string;
+  sizes: string;
+  loading?: 'eager' | 'lazy';
+  fetchPriority?: 'high' | 'low' | 'auto';
+  pictureClass?: string;
+  imageClass?: string;
+  mobileSourceMaxWidth?: 480 | 960;
+}
+
+const {
+  wallpaper,
+  alt = wallpaper.title,
+  sizes,
+  loading = 'lazy',
+  fetchPriority = 'auto',
+  pictureClass,
+  imageClass,
+  mobileSourceMaxWidth,
+} = Astro.props;
+const sources = responsivePreviewSources(wallpaper, env.CDN_BASE_URL);
+const mobileAvifSrcSet = sources && mobileSourceMaxWidth
+  ? capSourceSet(sources.avifSrcSet, mobileSourceMaxWidth)
+  : undefined;
+const mobileWebpSrcSet = sources && mobileSourceMaxWidth
+  ? capSourceSet(sources.webpSrcSet, mobileSourceMaxWidth)
+  : undefined;
+---
+
+{sources ? (
+  <picture class={pictureClass} data-responsive-wallpaper>
+    {mobileAvifSrcSet && <source media={`(max-width: ${mobileSourceMaxWidth}px)`} type="image/avif" srcset={mobileAvifSrcSet} sizes={sizes} />}
+    {mobileWebpSrcSet && <source media={`(max-width: ${mobileSourceMaxWidth}px)`} type="image/webp" srcset={mobileWebpSrcSet} sizes={sizes} />}
+    {sources.avifSrcSet && <source type="image/avif" srcset={sources.avifSrcSet} sizes={sizes} />}
+    {sources.webpSrcSet && <source type="image/webp" srcset={sources.webpSrcSet} sizes={sizes} />}
+    <img
+      src={sources.fallbackUrl}
+      srcset={sources.webpSrcSet}
+      sizes={sizes}
+      alt={alt}
+      width={wallpaper.width}
+      height={wallpaper.height}
+      loading={loading}
+      decoding="async"
+      fetchpriority={fetchPriority}
+      class={imageClass}
+    />
+  </picture>
+) : (
+  <span
+    class:list={['preview-placeholder', pictureClass]}
+    style={`aspect-ratio: ${wallpaper.width} / ${wallpaper.height};`}
+    role="img"
+    aria-label={`${alt} preview unavailable`}
+    data-responsive-wallpaper
+    data-preview-missing
+  ></span>
+)}
+
+<style>
+  .preview-placeholder {
+    display: block;
+    width: 100%;
+    min-height: 8rem;
+    background: var(--preview-placeholder-bg, linear-gradient(135deg, var(--bg-surface-elevated), var(--bg-surface)));
+  }
+</style>

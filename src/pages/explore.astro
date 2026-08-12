@@ -1,0 +1,675 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import 'lenis/dist/lenis.css';
+import { env } from 'cloudflare:workers';
+import Layout from '@/layouts/Layout.astro';
+import FilterBar from '@/components/public/FilterBar.astro';
+import WallpaperCard from '@/components/public/WallpaperCard.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Wallpaper, Category } from '@/types';
+import { explorePaginationItems } from '@/lib/explore';
+import { parseWallpaperFilters } from '@/lib/validation';
+
+const db = env.DB;
+const url = new URL(Astro.request.url);
+
+let parsedFilters;
+try {
+  parsedFilters = parseWallpaperFilters(url.searchParams, true);
+} catch {
+  return new Response('Invalid gallery filters', { status: 400 });
+}
+
+const currentCategory = parsedFilters.categorySlug || '';
+const currentOrientation = parsedFilters.orientation || '';
+const currentSort = parsedFilters.sortBy || 'newest';
+const currentSearch = parsedFilters.searchQuery || '';
+const currentTag = parsedFilters.tagSlug || '';
+const currentPage = parsedFilters.page || 1;
+const pageSize = parsedFilters.limit || 20;
+
+let wallpapers: Wallpaper[] = [];
+let categories: Category[] = [];
+let totalWallpapers = 0;
+let totalPages = 1;
+let databaseUnavailable = false;
+
+if (db) {
+  try {
+    const [categoryResult, wallpaperResult] = await Promise.all([
+      DBService.getCategories(db),
+      DBService.listWallpapers(db, parsedFilters),
+    ]);
+
+    categories = categoryResult;
+    wallpapers = wallpaperResult.wallpapers;
+    totalWallpapers = wallpaperResult.total;
+    totalPages = wallpaperResult.totalPages;
+  } catch (error) {
+    console.error('Failed to query Explore wallpapers from D1:', error);
+    databaseUnavailable = true;
+    Astro.response.status = 503;
+  }
+}
+
+const resultStart = wallpapers.length > 0 ? ((currentPage - 1) * pageSize) + 1 : 0;
+const resultEnd = wallpapers.length > 0 ? resultStart + wallpapers.length - 1 : 0;
+const activeFilterCount = [
+  currentCategory,
+  currentOrientation,
+  currentSort !== 'newest' ? currentSort : '',
+  currentSearch,
+  currentTag,
+].filter(Boolean).length;
+const paginationItems = explorePaginationItems(currentPage, totalPages);
+
+function getPageUrl(pageNumber: number): string {
+  const params = new URLSearchParams(url.searchParams);
+  params.set('page', pageNumber.toString());
+  return `/explore?${params.toString()}`;
+}
+---
+
+<Layout
+  title="Explore the High-Resolution Wallpaper Archive | Elysium"
+  description="Browse the complete Elysium catalogue of high-resolution wallpapers, preserved as untouched original masters."
+  activePage="explore"
+  surface="explore-luxury"
+>
+  <section class="explore-hero" aria-labelledby="explore-title">
+    <div class="explore-frame">
+      <div class="explore-hero__register" data-reveal>
+        <p>Complete visual archive</p>
+        <p>Catalogue / {String(currentPage).padStart(3, '0')}</p>
+        <p>{activeFilterCount > 0 ? `${activeFilterCount} active parameters` : 'Unfiltered edition'}</p>
+      </div>
+
+      <h1 id="explore-title" data-reveal>EXPLORE</h1>
+
+      <div class="explore-hero__notes" data-reveal>
+        <p>
+          A disciplined index of selected imagery, prepared for display and preserved as untouched original master files.
+        </p>
+
+        <dl>
+          <div>
+            <dt>Records</dt>
+            <dd>{totalWallpapers.toLocaleString('en-US')}</dd>
+          </div>
+          <div>
+            <dt>Visible</dt>
+            <dd>{resultStart > 0 ? `${String(resultStart).padStart(3, '0')} / ${String(resultEnd).padStart(3, '0')}` : '000 / 000'}</dd>
+          </div>
+          <div>
+            <dt>Sequence</dt>
+            <dd>{currentSort}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <FilterBar
+    appearance="archive"
+    categories={categories}
+    currentCategory={currentCategory}
+    currentOrientation={currentOrientation}
+    currentSort={currentSort}
+    currentSearch={currentSearch}
+    currentTag={currentTag}
+  />
+
+  <section class="catalogue-section explore-frame" aria-labelledby="catalogue-title">
+    <header class="catalogue-heading" data-reveal>
+      <div>
+        <p>Published sequence</p>
+        <h2 id="catalogue-title">Catalogue Records</h2>
+      </div>
+      <p>
+        {databaseUnavailable
+          ? 'Archive connection unavailable'
+          : totalWallpapers === 0
+            ? 'No matching records'
+            : `${totalWallpapers.toLocaleString('en-US')} selected works`}
+      </p>
+    </header>
+
+    {databaseUnavailable ? (
+      <div class="catalogue-notice" role="alert" data-reveal>
+        <span>Service note / 503</span>
+        <div>
+          <h2>Archive temporarily unavailable</h2>
+          <p>The catalogue could not be reached. Please try again shortly.</p>
+        </div>
+        <a href={Astro.url.pathname + Astro.url.search}>Retry request</a>
+      </div>
+    ) : wallpapers.length === 0 ? (
+      <div class="catalogue-notice" data-reveal>
+        <span>Query returned / 000</span>
+        <div>
+          <h2>No match</h2>
+          <p>No published records match the current archive parameters.</p>
+        </div>
+        <a href="/explore">Reset archive query</a>
+      </div>
+    ) : (
+      <>
+        <ol class="catalogue-grid" aria-label="Wallpaper catalogue">
+          {wallpapers.map((wallpaper, index) => (
+            <li data-orientation={wallpaper.orientation}>
+              <WallpaperCard
+                wallpaper={wallpaper}
+                appearance="editorial"
+                priority={index === 0}
+                index={(resultStart - 1) + index}
+              />
+            </li>
+          ))}
+        </ol>
+
+        {totalPages > 1 && (
+          <nav class="catalogue-pagination" aria-label="Catalogue pagination" data-reveal>
+            <div class="catalogue-pagination__direction">
+              {currentPage > 1 ? (
+                <a href={getPageUrl(currentPage - 1)} rel="prev">← Previous index</a>
+              ) : (
+                <span>← Previous index</span>
+              )}
+            </div>
+
+            <div class="catalogue-pagination__pages">
+              {paginationItems.map((item, index) => item === 'gap' ? (
+                <span class="catalogue-pagination__gap" aria-hidden="true" data-gap-index={index}>···</span>
+              ) : (
+                <a
+                  href={getPageUrl(item)}
+                  aria-current={item === currentPage ? 'page' : undefined}
+                  aria-label={`Page ${item}`}
+                >
+                  {String(item).padStart(2, '0')}
+                </a>
+              ))}
+            </div>
+
+            <div class="catalogue-pagination__direction catalogue-pagination__direction--next">
+              {currentPage < totalPages ? (
+                <a href={getPageUrl(currentPage + 1)} rel="next">Next index →</a>
+              ) : (
+                <span>Next index →</span>
+              )}
+            </div>
+
+            <p>Page {String(currentPage).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}</p>
+          </nav>
+        )}
+      </>
+    )}
+  </section>
+</Layout>
+
+<script>
+  import Lenis from 'lenis';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal], [data-image-reveal]'));
+
+  if (!reducedMotion.matches) {
+    document.documentElement.classList.add('motion-ready');
+
+    const lenis = new Lenis({
+      anchors: { offset: -138 },
+      autoRaf: true,
+      duration: 1.1,
+      easing: (time: number) => Math.min(1, 1.001 - Math.pow(2, -10 * time)),
+      smoothWheel: true,
+      stopInertiaOnNavigate: true,
+      syncTouch: false,
+      respectReducedMotion: true,
+    });
+
+    const revealObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }, {
+          rootMargin: '0px 0px -8% 0px',
+          threshold: 0.08,
+        })
+      : null;
+
+    requestAnimationFrame(() => {
+      if (revealObserver) {
+        revealTargets.forEach((target) => revealObserver.observe(target));
+      } else {
+        revealTargets.forEach((target) => target.classList.add('is-visible'));
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      revealObserver?.disconnect();
+      lenis.destroy();
+    }, { once: true });
+  }
+</script>
+
+<style>
+  .explore-frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding-left: var(--luxury-gutter);
+    padding-right: var(--luxury-gutter);
+  }
+
+  .explore-hero {
+    overflow: clip;
+  }
+
+  .explore-hero__register {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.56rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.08em;
+    padding: 1rem 0;
+    text-transform: uppercase;
+  }
+
+  .explore-hero__register p:nth-child(2) {
+    text-align: center;
+  }
+
+  .explore-hero__register p:last-child {
+    color: var(--luxury-muted);
+    text-align: right;
+  }
+
+  .explore-hero h1 {
+    font-size: clamp(4.7rem, 16.3vw, 17.5rem);
+    font-stretch: 125%;
+    font-weight: 740;
+    letter-spacing: -0.098em;
+    line-height: 0.76;
+    padding: clamp(4rem, 8vw, 8rem) 0 clamp(3rem, 6vw, 6rem);
+    white-space: nowrap;
+  }
+
+  .explore-hero__notes {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding-bottom: clamp(4rem, 8vw, 8rem);
+  }
+
+  .explore-hero__notes > p {
+    font-size: clamp(1.05rem, 1.55vw, 1.5rem);
+    font-stretch: 106%;
+    font-weight: 430;
+    grid-column: 1 / span 5;
+    letter-spacing: -0.025em;
+    line-height: 1.45;
+    max-width: 32rem;
+  }
+
+  .explore-hero__notes dl {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-column: 8 / -1;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .explore-hero__notes dl div {
+    padding-top: 0.75rem;
+  }
+
+  .explore-hero__notes dl div:not(:first-child) {
+    border-left: 1px solid var(--luxury-line);
+    padding-left: 0.75rem;
+  }
+
+  .explore-hero__notes dt {
+    color: var(--luxury-muted);
+    font-size: 0.52rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .explore-hero__notes dd {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    margin: 1rem 0 0;
+    text-transform: capitalize;
+  }
+
+  .catalogue-section {
+    padding-bottom: var(--luxury-space);
+    padding-top: var(--luxury-space);
+  }
+
+  .catalogue-heading {
+    align-items: end;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(3.5rem, 7vw, 7rem);
+    padding-bottom: 1rem;
+  }
+
+  .catalogue-heading > div {
+    grid-column: 1 / span 9;
+  }
+
+  .catalogue-heading > div > p,
+  .catalogue-heading > p {
+    color: var(--luxury-muted);
+    font-size: 0.55rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .catalogue-heading h2 {
+    font-size: clamp(2.6rem, 6vw, 6.75rem);
+    font-stretch: 120%;
+    font-weight: 620;
+    letter-spacing: -0.075em;
+    line-height: 0.88;
+    margin-top: 1.5rem;
+  }
+
+  .catalogue-heading > p {
+    grid-column: 10 / -1;
+    text-align: right;
+  }
+
+  .catalogue-grid {
+    align-items: start;
+    display: grid;
+    gap: clamp(3.5rem, 7vw, 8rem) clamp(1rem, 2vw, 2rem);
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    list-style: none;
+  }
+
+  .catalogue-grid > li {
+    grid-column: span 3;
+    min-width: 0;
+  }
+
+  .catalogue-grid > li[data-orientation='landscape'] {
+    grid-column: span 6;
+  }
+
+  .catalogue-notice {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding: clamp(2rem, 4vw, 4rem) 0;
+  }
+
+  .catalogue-notice > span {
+    color: var(--luxury-muted);
+    font-size: 0.55rem;
+    grid-column: 1 / span 3;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .catalogue-notice > div {
+    grid-column: 4 / span 6;
+  }
+
+  .catalogue-notice h2 {
+    font-size: clamp(2.75rem, 7vw, 8rem);
+    font-stretch: 120%;
+    font-weight: 620;
+    letter-spacing: -0.075em;
+    line-height: 0.86;
+    text-transform: uppercase;
+  }
+
+  .catalogue-notice p {
+    color: var(--luxury-muted);
+    font-size: 0.8rem;
+    line-height: 1.55;
+    margin-top: 1.5rem;
+    max-width: 32rem;
+  }
+
+  .catalogue-notice > a {
+    border-bottom: 1px solid currentColor;
+    font-size: 0.65rem;
+    grid-column: 10 / -1;
+    padding-bottom: 0.4rem;
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .catalogue-notice > a:hover {
+    opacity: 0.6;
+  }
+
+  .catalogue-notice > a:active {
+    transform: scale(0.985);
+  }
+
+  .catalogue-pagination {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: 3fr 6fr 3fr;
+    margin-top: var(--luxury-space);
+    min-height: 5rem;
+    position: relative;
+  }
+
+  .catalogue-pagination__direction {
+    font-size: 0.65rem;
+  }
+
+  .catalogue-pagination__direction--next {
+    text-align: right;
+  }
+
+  .catalogue-pagination__direction a {
+    display: inline-block;
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .catalogue-pagination__direction a:hover {
+    opacity: 0.6;
+  }
+
+  .catalogue-pagination__direction a:active {
+    transform: scale(0.98);
+  }
+
+  .catalogue-pagination__direction > span {
+    color: var(--luxury-muted);
+  }
+
+  .catalogue-pagination__pages {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+  }
+
+  .catalogue-pagination__pages a,
+  .catalogue-pagination__gap {
+    align-items: center;
+    display: inline-flex;
+    font-size: 0.62rem;
+    height: 2.35rem;
+    justify-content: center;
+    min-width: 2.35rem;
+  }
+
+  .catalogue-pagination__pages a {
+    border: 1px solid transparent;
+    transition: border-color 200ms ease, transform 200ms ease;
+  }
+
+  .catalogue-pagination__pages a:hover {
+    border-color: var(--luxury-line);
+  }
+
+  .catalogue-pagination__pages a[aria-current='page'] {
+    background: var(--luxury-ink);
+    color: var(--luxury-paper);
+  }
+
+  .catalogue-pagination__pages a:active {
+    transform: scale(0.95);
+  }
+
+  .catalogue-pagination__gap {
+    color: var(--luxury-muted);
+  }
+
+  .catalogue-pagination > p {
+    bottom: 0.45rem;
+    color: var(--luxury-muted);
+    font-size: 0.48rem;
+    left: 50%;
+    letter-spacing: 0.08em;
+    position: absolute;
+    text-transform: uppercase;
+    transform: translateX(-50%);
+  }
+
+  :global(html.motion-ready [data-reveal]) {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition: opacity 750ms cubic-bezier(0.22, 1, 0.36, 1), transform 750ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-image-reveal] > *) {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal].is-visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(html.motion-ready [data-image-reveal].is-visible > *) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (max-width: 1100px) {
+    .explore-hero__notes > p {
+      grid-column: 1 / span 5;
+    }
+
+    .explore-hero__notes dl {
+      grid-column: 7 / -1;
+    }
+
+    .catalogue-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .catalogue-grid > li {
+      grid-column: span 3;
+    }
+
+    .catalogue-grid > li[data-orientation='landscape'] {
+      grid-column: span 6;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .explore-hero__register {
+      gap: 0.45rem;
+      grid-template-columns: 1fr;
+    }
+
+    .explore-hero__register p:nth-child(2),
+    .explore-hero__register p:last-child {
+      text-align: left;
+    }
+
+    .explore-hero h1 {
+      font-size: 20.5vw;
+      line-height: 0.8;
+      padding-bottom: 3.5rem;
+      padding-top: 4.5rem;
+    }
+
+    .explore-hero__notes {
+      display: block;
+      padding-bottom: 4.5rem;
+    }
+
+    .explore-hero__notes dl {
+      margin-top: 3rem;
+    }
+
+    .catalogue-section {
+      padding-bottom: 5.5rem;
+      padding-top: 5.5rem;
+    }
+
+    .catalogue-heading {
+      display: block;
+      margin-bottom: 4rem;
+    }
+
+    .catalogue-heading > p {
+      margin-top: 1.5rem;
+      text-align: left;
+    }
+
+    .catalogue-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .catalogue-grid > li,
+    .catalogue-grid > li[data-orientation='landscape'] {
+      grid-column: span 4;
+    }
+
+    .catalogue-notice {
+      display: block;
+    }
+
+    .catalogue-notice > div,
+    .catalogue-notice > a {
+      display: block;
+      margin-top: 3rem;
+    }
+
+    .catalogue-pagination {
+      gap: 1.5rem;
+      grid-template-columns: 1fr 1fr;
+      padding: 1.25rem 0 2.25rem;
+    }
+
+    .catalogue-pagination__pages {
+      grid-column: 1 / -1;
+      grid-row: 1;
+      overflow-x: auto;
+    }
+
+    .catalogue-pagination__direction {
+      grid-column: 1;
+      grid-row: 2;
+    }
+
+    .catalogue-pagination__direction--next {
+      grid-column: 2;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-reveal]),
+    :global([data-image-reveal]),
+    :global([data-image-reveal] > *) {
+      clip-path: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

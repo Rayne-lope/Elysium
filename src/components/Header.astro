@@ -1,0 +1,439 @@
+---
+import type { PublicSurface } from '@/types';
+
+interface Props {
+  activePage?: string;
+  surface?: PublicSurface;
+}
+
+const { activePage = 'home', surface = 'default' } = Astro.props;
+const isLuxury = surface !== 'default';
+
+const navigation = [
+  { href: '/', label: 'Home', page: 'home' },
+  { href: '/explore', label: 'Explore', page: 'explore' },
+  { href: '/popular', label: 'Popular', page: 'popular' },
+  { href: '/categories', label: 'Categories', page: 'categories' },
+];
+---
+
+{isLuxury ? (
+  <header class="luxury-header">
+    <div class="luxury-header__grid">
+      <a href="/" class="luxury-wordmark" aria-label="Elysium home">ELYSIUM</a>
+
+      <nav class="luxury-nav" aria-label="Primary navigation">
+        {navigation.map((item, index) => (
+          <a
+            href={item.href}
+            class:list={['luxury-nav__link', { active: activePage === item.page }]}
+            aria-current={activePage === item.page ? 'page' : undefined}
+          >
+            <span aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+            {item.label}
+          </a>
+        ))}
+      </nav>
+
+      <form action="/search" method="GET" class="luxury-search" role="search">
+        <label for="home-search">Search the archive</label>
+        <div class="luxury-search__control">
+          <input id="home-search" type="search" name="q" placeholder="Search" />
+          <button type="submit" aria-label="Submit search">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"></circle>
+              <path d="m16.25 16.25 4 4"></path>
+            </svg>
+          </button>
+        </div>
+      </form>
+
+      <details class="luxury-menu">
+        <summary>Menu</summary>
+        <div class="luxury-menu__panel">
+          <nav aria-label="Mobile navigation">
+            {navigation.map((item, index) => (
+              <a href={item.href} aria-current={activePage === item.page ? 'page' : undefined}>
+                <span>{String(index + 1).padStart(2, '0')}</span>
+                {item.label}
+              </a>
+            ))}
+          </nav>
+          <form action="/search" method="GET" role="search">
+            <label for="mobile-home-search">Search the archive</label>
+            <div class="luxury-search__control">
+              <input id="mobile-home-search" type="search" name="q" placeholder="Search" />
+              <button type="submit" aria-label="Submit search">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <circle cx="11" cy="11" r="7"></circle>
+                  <path d="m16.25 16.25 4 4"></path>
+                </svg>
+              </button>
+            </div>
+          </form>
+        </div>
+      </details>
+    </div>
+  </header>
+) : (
+  <header class="default-header">
+    <div class="container default-header__inner">
+      <a href="/" class="default-wordmark">
+        ELYSIUM<span>.</span>
+      </a>
+
+      <nav class="desktop-nav" aria-label="Primary navigation">
+        {navigation.map((item) => (
+          <a
+            href={item.href}
+            class:list={['nav-item', { active: activePage === item.page }]}
+            aria-current={activePage === item.page ? 'page' : undefined}
+          >
+            {item.label}
+          </a>
+        ))}
+      </nav>
+
+      <form action="/search" method="GET" class="search-form" role="search">
+        <input type="search" name="q" aria-label="Search wallpapers" placeholder="Search wallpapers..." />
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+        </svg>
+      </form>
+    </div>
+  </header>
+)}
+
+<style>
+  .default-header {
+    background: var(--bg-glass);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border-subtle);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .default-header__inner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    height: 72px;
+  }
+
+  .default-wordmark {
+    align-items: center;
+    color: var(--text-primary);
+    display: flex;
+    font-family: var(--font-heading);
+    font-size: 1.6rem;
+    font-weight: 800;
+    gap: 0.25rem;
+    letter-spacing: -0.03em;
+  }
+
+  .default-wordmark span {
+    color: var(--accent-text);
+  }
+
+  .desktop-nav {
+    align-items: center;
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .nav-item {
+    border-radius: var(--radius-full);
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    font-weight: 500;
+    padding: 0.5rem 1rem;
+    transition: var(--transition-fast);
+  }
+
+  .nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+  }
+
+  .nav-item.active {
+    background: var(--bg-surface-elevated);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .search-form {
+    position: relative;
+  }
+
+  .search-form input {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-full);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    outline: none;
+    padding: 0.5rem 1rem 0.5rem 2.25rem;
+    transition: var(--transition-normal);
+    width: 200px;
+  }
+
+  .search-form svg {
+    fill: none;
+    height: 14px;
+    left: 0.75rem;
+    position: absolute;
+    stroke: var(--text-secondary);
+    stroke-width: 2;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 14px;
+  }
+
+  .search-form input:focus {
+    border-color: var(--accent-primary);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+    width: 260px;
+  }
+
+  .luxury-header {
+    background: var(--luxury-paper);
+    border-bottom: 1px solid var(--luxury-line);
+    color: var(--luxury-ink);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .luxury-header__grid {
+    align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin: 0 auto;
+    max-width: 1800px;
+    min-height: 76px;
+    padding: 0 var(--luxury-gutter);
+  }
+
+  .luxury-wordmark {
+    align-items: center;
+    border-right: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 1.05rem;
+    font-stretch: 120%;
+    font-weight: 760;
+    grid-column: span 3;
+    letter-spacing: -0.04em;
+    transition: opacity 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .luxury-wordmark:hover {
+    opacity: 0.75;
+  }
+
+  .luxury-nav {
+    align-items: stretch;
+    display: grid;
+    grid-column: span 6;
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .luxury-nav__link {
+    align-items: center;
+    border-right: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.78rem;
+    font-weight: 520;
+    gap: 0.55rem;
+    justify-content: center;
+    letter-spacing: -0.01em;
+    position: relative;
+    transition: background-color 420ms cubic-bezier(0.22, 1, 0.36, 1), color 420ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .luxury-nav__link span {
+    color: var(--luxury-muted);
+    font-size: 0.58rem;
+  }
+
+  .luxury-nav__link::after {
+    background: var(--luxury-ink);
+    bottom: -1px;
+    content: '';
+    height: 1px;
+    left: 0;
+    position: absolute;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+    width: 100%;
+  }
+
+  .luxury-nav__link:hover::after,
+  .luxury-nav__link.active::after {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+
+  .luxury-nav__link:active,
+  .luxury-search button:active,
+  .luxury-menu a:active {
+    transform: scale(0.985);
+  }
+
+  .luxury-search {
+    align-content: center;
+    display: grid;
+    grid-column: span 3;
+    padding-left: clamp(1rem, 2vw, 2rem);
+  }
+
+  .luxury-search label,
+  .luxury-menu label {
+    color: var(--luxury-muted);
+    font-size: 0.57rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .luxury-search__control {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    display: flex;
+  }
+
+  .luxury-search input,
+  .luxury-menu input {
+    background: transparent;
+    border: 0;
+    color: var(--luxury-ink);
+    font: inherit;
+    font-size: 0.82rem;
+    min-width: 0;
+    outline: 0;
+    padding: 0.45rem 0;
+    width: 100%;
+  }
+
+  .luxury-search button,
+  .luxury-menu button {
+    background: transparent;
+    border: 0;
+    color: inherit;
+    cursor: pointer;
+    display: grid;
+    padding: 0.35rem;
+    place-items: center;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .luxury-search svg,
+  .luxury-menu svg {
+    fill: none;
+    height: 17px;
+    stroke: currentColor;
+    stroke-width: 1.4;
+    width: 17px;
+  }
+
+  .luxury-menu {
+    display: none;
+  }
+
+  @media (max-width: 960px) {
+    .luxury-header__grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      min-height: 68px;
+    }
+
+    .luxury-wordmark {
+      grid-column: span 3;
+    }
+
+    .luxury-nav,
+    .luxury-search {
+      display: none;
+    }
+
+    .luxury-menu {
+      display: block;
+      grid-column: span 3;
+      position: static;
+    }
+
+    .luxury-menu summary {
+      align-items: center;
+      cursor: pointer;
+      display: flex;
+      font-size: 0.78rem;
+      height: 100%;
+      justify-content: flex-end;
+      list-style: none;
+      text-transform: uppercase;
+    }
+
+    .luxury-menu summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .luxury-menu summary::before {
+      content: '+';
+      font-size: 1rem;
+      margin-right: 0.6rem;
+    }
+
+    .luxury-menu[open] summary::before {
+      content: '−';
+    }
+
+    .luxury-menu__panel {
+      background: var(--luxury-paper);
+      border-bottom: 1px solid var(--luxury-line);
+      border-top: 1px solid var(--luxury-line);
+      left: 0;
+      padding: 0 var(--luxury-gutter) 1.5rem;
+      position: absolute;
+      right: 0;
+      top: 100%;
+    }
+
+    .luxury-menu nav a {
+      align-items: center;
+      border-bottom: 1px solid var(--luxury-line);
+      display: grid;
+      font-size: clamp(1.5rem, 6vw, 2.5rem);
+      font-stretch: 115%;
+      font-weight: 560;
+      grid-template-columns: 3rem 1fr;
+      letter-spacing: -0.05em;
+      padding: 0.7rem 0;
+      transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .luxury-menu nav span {
+      color: var(--luxury-muted);
+      font-size: 0.6rem;
+      letter-spacing: 0;
+    }
+
+    .luxury-menu form {
+      margin-top: 1.5rem;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .default-header .desktop-nav {
+      display: none;
+    }
+
+    .default-header .search-form input {
+      width: 140px;
+    }
+
+    .default-header .search-form input:focus {
+      width: 170px;
+    }
+  }
+</style>

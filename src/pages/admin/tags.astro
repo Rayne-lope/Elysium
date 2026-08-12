@@ -1,0 +1,82 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Tag } from '@/types';
+
+const db = env.DB;
+
+let tags: Tag[] = [];
+if (db) {
+  try {
+    tags = await DBService.getTags(db);
+  } catch (e) {
+    console.error('Failed to load tags:', e);
+  }
+}
+---
+
+<AdminLayout title="Manage Tags | Admin" activeTab="tags">
+  <div style="max-width: 800px; margin: 0 auto;">
+    
+    <div style="margin-bottom: 2rem;">
+      <h1 style="font-family: var(--font-heading); font-size: 2rem; font-weight: 800; margin-bottom: 0.25rem;">
+        Tag Management
+      </h1>
+      <p style="color: var(--text-secondary); font-size: 0.95rem;">
+        Manage keywords and metadata tags for wallpaper discovery.
+      </p>
+    </div>
+
+    <!-- Create Tag Form -->
+    <div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 2rem;">
+      <h2 style="font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem;">Create New Tag</h2>
+      <form id="create-tag-form" style="display: flex; gap: 1rem;">
+        <input type="text" id="tag-name" name="name" required placeholder="e.g. AMOLED, Minimalist, 4K" style="flex: 1; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);" />
+        <button type="submit" style="padding: 0.75rem 1.25rem; background: var(--accent-primary); color: #fff; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;">
+          + Add Tag
+        </button>
+      </form>
+    </div>
+
+    <!-- Tag Cloud / List -->
+    <div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 1.5rem;">
+      {tags.length === 0 ? (
+        <p style="color: var(--text-muted); text-align: center; padding: 2rem 0;">No tags created yet.</p>
+      ) : (
+        <div style="display: flex; flex-wrap: wrap; gap: 0.75rem;">
+          {tags.map((tag) => (
+            <span style="padding: 0.5rem 0.875rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-full); font-size: 0.875rem; font-weight: 600; color: var(--text-secondary);">
+              #{tag.name} <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: 400;">({tag.slug})</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+
+  </div>
+
+  <script>
+    const form = document.getElementById('create-tag-form') as HTMLFormElement;
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nameInput = document.getElementById('tag-name') as HTMLInputElement;
+
+      try {
+        const res = await fetch('/api/admin/tags', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: nameInput.value }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+        if (res.ok && data.success) {
+          window.location.reload();
+        } else {
+          alert(data.error || 'Failed to create tag');
+        }
+      } catch (err) {
+        alert('Network error creating tag');
+      }
+    });
+  </script>
+</AdminLayout>

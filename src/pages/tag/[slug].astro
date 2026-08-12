@@ -1,0 +1,757 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import 'lenis/dist/lenis.css';
+import { env } from 'cloudflare:workers';
+import Layout from '@/layouts/Layout.astro';
+import FilterBar from '@/components/public/FilterBar.astro';
+import WallpaperCard from '@/components/public/WallpaperCard.astro';
+import { DBService, type ListWallpaperFilters } from '@worker/services/db.service';
+import type { Wallpaper, Category, Tag } from '@/types';
+import { explorePaginationItems } from '@/lib/explore';
+import { buildCollectionPageUrl, collectionResultRange } from '@/lib/collection-pages';
+import { parseWallpaperFilters } from '@/lib/validation';
+
+const db = env.DB;
+const { slug } = Astro.params;
+
+if (!slug) {
+  return Astro.rewrite('/404');
+}
+
+const url = new URL(Astro.request.url);
+let invalidFilters = false;
+let parsedFilters: ListWallpaperFilters = {
+  page: 1,
+  limit: 20,
+  status: 'published',
+  sortBy: 'newest',
+};
+
+try {
+  parsedFilters = parseWallpaperFilters(url.searchParams, true);
+  if (url.searchParams.has('q') || url.searchParams.has('tag')) {
+    throw new Error('Unsupported tag dossier filter');
+  }
+} catch {
+  invalidFilters = true;
+  Astro.response.status = 400;
+}
+
+const currentCategory = parsedFilters.categorySlug || '';
+const currentOrientation = parsedFilters.orientation || '';
+const currentSort = parsedFilters.sortBy || 'newest';
+const currentPage = parsedFilters.page || 1;
+const pageSize = parsedFilters.limit || 20;
+
+let tag: Tag | null = null;
+let categories: Category[] = [];
+let wallpapers: Wallpaper[] = [];
+let totalWallpapers = 0;
+let totalPages = 1;
+let databaseUnavailable = !db && !invalidFilters;
+
+if (db && !invalidFilters) {
+  try {
+    tag = await DBService.getTagBySlug(db, slug);
+    if (!tag) return Astro.rewrite('/404');
+
+    const [categoryResult, wallpaperResult] = await Promise.all([
+      DBService.getCategories(db),
+      DBService.listWallpapers(db, {
+        page: currentPage,
+        limit: pageSize,
+        status: 'published',
+        tagSlug: slug,
+        categorySlug: currentCategory || undefined,
+        orientation: currentOrientation || undefined,
+        sortBy: currentSort,
+      }),
+    ]);
+
+    categories = categoryResult;
+    wallpapers = wallpaperResult.wallpapers;
+    totalWallpapers = wallpaperResult.total;
+    totalPages = wallpaperResult.totalPages;
+  } catch (error) {
+    console.error('Failed to load tag dossier:', error);
+    databaseUnavailable = true;
+    Astro.response.status = 503;
+  }
+} else if (databaseUnavailable) {
+  Astro.response.status = 503;
+}
+
+const inferredName = slug
+  .split('-')
+  .filter(Boolean)
+  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+  .join(' ');
+const tagName = tag?.name || inferredName || 'Descriptor';
+const { start: resultStart, end: resultEnd } = collectionResultRange(
+  currentPage,
+  pageSize,
+  wallpapers.length,
+);
+const hasActiveFilters = Boolean(currentCategory || currentOrientation || currentSort !== 'newest');
+const paginationItems = explorePaginationItems(currentPage, totalPages);
+
+function getPageUrl(pageNumber: number): string {
+  return buildCollectionPageUrl(
+    `/tag/${slug}`,
+    url.searchParams,
+    pageNumber,
+    ['limit', 'category', 'orientation', 'sort'],
+  );
+}
+---
+
+<Layout
+  title={`#${tagName} Wallpaper Dossier | Elysium`}
+  description={`Explore high-resolution wallpaper masters cross-referenced by the ${tagName} descriptor.`}
+  activePage="explore"
+  surface="tag-luxury"
+>
+  <section class="tag-hero" aria-labelledby="tag-title">
+    <div class="tag-frame">
+      <nav class="tag-breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li><a href="/explore">Complete archive</a></li>
+          <li aria-current="page">#{tagName}</li>
+        </ol>
+        <a href="/categories">Taxonomy atlas</a>
+      </nav>
+
+      <div class="tag-register" data-reveal>
+        <p>Cross-reference dossier</p>
+        <p>Descriptor / {slug.toUpperCase()}</p>
+        <p>{hasActiveFilters ? 'Scoped index' : 'Complete descriptor'}</p>
+      </div>
+
+      <h1 id="tag-title" data-reveal><span aria-hidden="true">#</span>{tagName}</h1>
+
+      <div class="tag-notes" data-reveal>
+        <p>
+          A cross-classified register of visual records connected by the {tagName} descriptor.
+        </p>
+
+        <dl>
+          <div>
+            <dt>Records</dt>
+            <dd>{String(totalWallpapers).padStart(3, '0')}</dd>
+          </div>
+          <div>
+            <dt>Visible</dt>
+            <dd>{resultStart > 0 ? `${String(resultStart).padStart(3, '0')} / ${String(resultEnd).padStart(3, '0')}` : '000 / 000'}</dd>
+          </div>
+          <div>
+            <dt>Sequence</dt>
+            <dd>{currentSort}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  {tag && !databaseUnavailable && !invalidFilters && (
+    <FilterBar
+      appearance="archive"
+      action={`/tag/${tag.slug}`}
+      resetHref={`/tag/${tag.slug}`}
+      resetLabel="Clear dossier ×"
+      statusLabel="Descriptor query"
+      idleSummary="All formats · All categories · Newest sequence"
+      showSearch={false}
+      categories={categories}
+      currentCategory={currentCategory}
+      currentOrientation={currentOrientation}
+      currentSort={currentSort}
+    />
+  )}
+
+  <section class="tag-catalogue tag-frame" aria-labelledby="tag-catalogue-title">
+    <header class="tag-heading" data-reveal>
+      <div>
+        <p>01 / Descriptor records</p>
+        <h2 id="tag-catalogue-title">Filed Editions</h2>
+      </div>
+      <p>
+        {invalidFilters
+          ? 'Invalid dossier parameters'
+          : databaseUnavailable
+            ? 'Archive connection unavailable'
+            : totalWallpapers > 0
+              ? `${totalWallpapers.toLocaleString('en-US')} selected works`
+              : 'Awaiting acquisition'}
+      </p>
+    </header>
+
+    {invalidFilters ? (
+      <div class="tag-notice" role="alert" data-reveal>
+        <span>Request note / 400</span>
+        <div>
+          <h2>Invalid dossier query</h2>
+          <p>One or more parameters are not supported by this descriptor index.</p>
+        </div>
+        <a href={`/tag/${slug}`}>Open clean dossier</a>
+      </div>
+    ) : databaseUnavailable ? (
+      <div class="tag-notice" role="alert" data-reveal>
+        <span>Service note / 503</span>
+        <div>
+          <h2>Dossier unavailable</h2>
+          <p>The archive connection could not be established. Please try again shortly.</p>
+        </div>
+        <a href={Astro.url.pathname + Astro.url.search}>Retry request</a>
+      </div>
+    ) : wallpapers.length === 0 ? (
+      <div class="tag-notice" data-reveal>
+        <span>{hasActiveFilters ? 'Query returned / 000' : 'Descriptor state / 000'}</span>
+        <div>
+          <h2>{hasActiveFilters ? 'No scoped match' : 'Awaiting acquisition'}</h2>
+          <p>
+            {hasActiveFilters
+              ? 'No published records match this descriptor within the selected format, category, and sequence.'
+              : 'This descriptor exists, but no published master files are currently attached to it.'}
+          </p>
+        </div>
+        <a href={hasActiveFilters ? `/tag/${slug}` : '/explore'}>
+          {hasActiveFilters ? 'Reset dossier query' : 'Browse complete archive'}
+        </a>
+      </div>
+    ) : (
+      <>
+        <ol class="tag-grid" aria-label={`Wallpaper records tagged ${tagName}`}>
+          {wallpapers.map((wallpaper, index) => (
+            <li data-orientation={wallpaper.orientation}>
+              <WallpaperCard
+                wallpaper={wallpaper}
+                appearance="editorial"
+                priority={index === 0}
+                index={(resultStart - 1) + index}
+              />
+            </li>
+          ))}
+        </ol>
+
+        {totalPages > 1 && (
+          <nav class="tag-pagination" aria-label="Tag dossier pagination" data-reveal>
+            <div>
+              {currentPage > 1 ? <a href={getPageUrl(currentPage - 1)} rel="prev">← Previous index</a> : <span>← Previous index</span>}
+            </div>
+
+            <div class="tag-pagination__pages">
+              {paginationItems.map((item, index) => item === 'gap' ? (
+                <span aria-hidden="true" data-gap-index={index}>···</span>
+              ) : (
+                <a href={getPageUrl(item)} aria-current={item === currentPage ? 'page' : undefined} aria-label={`Page ${item}`}>
+                  {String(item).padStart(2, '0')}
+                </a>
+              ))}
+            </div>
+
+            <div class="tag-pagination__next">
+              {currentPage < totalPages ? <a href={getPageUrl(currentPage + 1)} rel="next">Next index →</a> : <span>Next index →</span>}
+            </div>
+
+            <p>Page {String(currentPage).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}</p>
+          </nav>
+        )}
+      </>
+    )}
+  </section>
+</Layout>
+
+<script>
+  import Lenis from 'lenis';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal], [data-image-reveal]'));
+
+  if (!reducedMotion.matches) {
+    document.documentElement.classList.add('motion-ready');
+
+    const lenis = new Lenis({
+      anchors: { offset: -138 },
+      autoRaf: true,
+      duration: 1.1,
+      easing: (time: number) => Math.min(1, 1.001 - Math.pow(2, -10 * time)),
+      smoothWheel: true,
+      stopInertiaOnNavigate: true,
+      syncTouch: false,
+      respectReducedMotion: true,
+    });
+
+    const revealObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+      : null;
+
+    requestAnimationFrame(() => {
+      if (revealObserver) revealTargets.forEach((target) => revealObserver.observe(target));
+      else revealTargets.forEach((target) => target.classList.add('is-visible'));
+    });
+
+    window.addEventListener('pagehide', () => {
+      revealObserver?.disconnect();
+      lenis.destroy();
+    }, { once: true });
+  }
+</script>
+
+<style>
+  .tag-frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding-left: var(--luxury-gutter);
+    padding-right: var(--luxury-gutter);
+  }
+
+  .tag-hero {
+    overflow: clip;
+  }
+
+  .tag-breadcrumb {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.56rem;
+    justify-content: space-between;
+    letter-spacing: 0.08em;
+    padding: 1rem 0;
+    text-transform: uppercase;
+  }
+
+  .tag-breadcrumb ol {
+    display: flex;
+    list-style: none;
+  }
+
+  .tag-breadcrumb li:not(:last-child)::after {
+    color: var(--luxury-muted);
+    content: '/';
+    margin: 0 0.65rem;
+  }
+
+  .tag-breadcrumb li:last-child {
+    color: var(--luxury-muted);
+  }
+
+  .tag-breadcrumb a {
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .tag-breadcrumb a:hover {
+    opacity: 0.6;
+  }
+
+  .tag-breadcrumb a:active {
+    transform: scale(0.98);
+  }
+
+  .tag-register {
+    display: grid;
+    font-size: 0.56rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.08em;
+    padding-top: clamp(2.75rem, 5vw, 5.5rem);
+    text-transform: uppercase;
+  }
+
+  .tag-register p:nth-child(2) {
+    text-align: center;
+  }
+
+  .tag-register p:last-child {
+    color: var(--luxury-muted);
+    text-align: right;
+  }
+
+  .tag-hero h1 {
+    align-items: baseline;
+    display: flex;
+    font-size: clamp(4.2rem, 13vw, 14.5rem);
+    font-stretch: 125%;
+    font-weight: 760;
+    gap: 0.03em;
+    letter-spacing: -0.09em;
+    line-height: 0.8;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    padding: clamp(4.5rem, 9vw, 9rem) 0 clamp(5rem, 10vw, 10rem);
+  }
+
+  .tag-hero h1 span {
+    color: var(--luxury-muted);
+    font-size: 0.45em;
+    font-stretch: 100%;
+    font-weight: 430;
+    letter-spacing: -0.04em;
+  }
+
+  .tag-notes {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding-bottom: clamp(3rem, 5vw, 5.5rem);
+  }
+
+  .tag-notes > p {
+    font-size: clamp(1.35rem, 2.4vw, 2.6rem);
+    font-stretch: 108%;
+    font-weight: 450;
+    grid-column: 1 / span 6;
+    letter-spacing: -0.045em;
+    line-height: 1.08;
+    max-width: 24ch;
+  }
+
+  .tag-notes dl {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-column: 8 / span 5;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .tag-notes dl div {
+    border-left: 1px solid var(--luxury-line);
+    min-height: 4.8rem;
+    padding: 0.8rem;
+  }
+
+  .tag-notes dl div:last-child {
+    border-right: 1px solid var(--luxury-line);
+  }
+
+  .tag-notes dt,
+  .tag-notes dd {
+    font-size: 0.56rem;
+    text-transform: uppercase;
+  }
+
+  .tag-notes dt {
+    color: var(--luxury-muted);
+    letter-spacing: 0.08em;
+    margin-bottom: 1.1rem;
+  }
+
+  .tag-catalogue {
+    padding-bottom: var(--luxury-space);
+    padding-top: var(--luxury-space);
+  }
+
+  .tag-heading {
+    align-items: end;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(3rem, 6vw, 6rem);
+    padding-bottom: 1.1rem;
+  }
+
+  .tag-heading > div {
+    grid-column: 1 / span 8;
+  }
+
+  .tag-heading > div > p,
+  .tag-heading > p {
+    color: var(--luxury-muted);
+    font-size: 0.56rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .tag-heading h2 {
+    font-size: clamp(2.8rem, 6vw, 7rem);
+    font-stretch: 116%;
+    font-weight: 520;
+    letter-spacing: -0.075em;
+    line-height: 0.9;
+    margin-top: 0.7rem;
+  }
+
+  .tag-heading > p {
+    grid-column: 10 / span 3;
+    text-align: right;
+  }
+
+  .tag-grid {
+    align-items: start;
+    display: grid;
+    gap: clamp(3rem, 6vw, 7rem) clamp(1rem, 2vw, 2rem);
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    list-style: none;
+  }
+
+  .tag-grid > li {
+    grid-column: span 3;
+    min-width: 0;
+  }
+
+  .tag-grid > li[data-orientation='landscape'] {
+    grid-column: span 6;
+  }
+
+  .tag-notice {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding: clamp(2rem, 4vw, 4rem) 0;
+  }
+
+  .tag-notice > span {
+    color: var(--luxury-muted);
+    font-size: 0.56rem;
+    grid-column: span 2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .tag-notice > div {
+    grid-column: span 7;
+  }
+
+  .tag-notice h2 {
+    font-size: clamp(1.9rem, 3.5vw, 4rem);
+    font-stretch: 112%;
+    font-weight: 520;
+    letter-spacing: -0.06em;
+    line-height: 0.95;
+  }
+
+  .tag-notice p {
+    color: var(--luxury-muted);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    margin-top: 0.8rem;
+    max-width: 60ch;
+  }
+
+  .tag-notice > a {
+    border-bottom: 1px solid var(--luxury-line);
+    font-size: 0.66rem;
+    grid-column: span 3;
+    justify-self: stretch;
+    padding-bottom: 0.65rem;
+    text-transform: uppercase;
+    transition: border-color 420ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms ease;
+  }
+
+  .tag-notice > a:hover {
+    border-color: var(--luxury-ink);
+  }
+
+  .tag-pagination {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.62rem;
+    grid-template-columns: 3fr 6fr 3fr;
+    margin-top: clamp(4rem, 8vw, 8rem);
+    min-height: 5rem;
+    position: relative;
+    text-transform: uppercase;
+  }
+
+  .tag-pagination > div:first-child span,
+  .tag-pagination__next span {
+    color: var(--luxury-muted);
+  }
+
+  .tag-pagination__next {
+    text-align: right;
+  }
+
+  .tag-pagination__pages {
+    align-items: center;
+    display: flex;
+    gap: 0.45rem;
+    justify-content: center;
+  }
+
+  .tag-pagination__pages a,
+  .tag-pagination__pages span {
+    align-items: center;
+    display: inline-flex;
+    height: 2.75rem;
+    justify-content: center;
+    min-width: 2.75rem;
+  }
+
+  .tag-pagination__pages a[aria-current='page'] {
+    background: var(--luxury-ink);
+    color: var(--luxury-paper);
+  }
+
+  .tag-pagination > p {
+    bottom: -1.5rem;
+    color: var(--luxury-muted);
+    font-size: 0.52rem;
+    left: 50%;
+    position: absolute;
+    transform: translateX(-50%);
+  }
+
+  .tag-pagination a {
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .tag-pagination a:hover {
+    opacity: 0.6;
+  }
+
+  .tag-pagination a:active,
+  .tag-notice > a:active {
+    transform: scale(0.98);
+  }
+
+  :global(html.motion-ready [data-reveal]) {
+    opacity: 0;
+    transform: translateY(1.4rem);
+    transition: opacity 850ms cubic-bezier(0.22, 1, 0.36, 1), transform 850ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-image-reveal] > *) {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 1000ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal].is-visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(html.motion-ready [data-image-reveal].is-visible > *) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (max-width: 960px) {
+    .tag-notes > p {
+      grid-column: 1 / span 6;
+    }
+
+    .tag-notes dl {
+      grid-column: 7 / span 6;
+    }
+
+    .tag-grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .tag-grid > li {
+      grid-column: span 3;
+    }
+
+    .tag-grid > li[data-orientation='landscape'] {
+      grid-column: span 6;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .tag-breadcrumb > a {
+      display: none;
+    }
+
+    .tag-register {
+      grid-template-columns: 1fr auto;
+    }
+
+    .tag-register p:nth-child(2) {
+      display: none;
+    }
+
+    .tag-hero h1 {
+      align-items: flex-start;
+      font-size: clamp(3.7rem, 20vw, 6.4rem);
+      line-height: 0.84;
+      padding-bottom: 4.5rem;
+      padding-top: 4.5rem;
+    }
+
+    .tag-notes {
+      display: block;
+    }
+
+    .tag-notes > p {
+      margin-bottom: 2.5rem;
+    }
+
+    .tag-notes dl {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .tag-notes dl div {
+      min-height: 4.25rem;
+      padding: 0.65rem;
+    }
+
+    .tag-heading {
+      display: block;
+    }
+
+    .tag-heading > p {
+      margin-top: 1.4rem;
+      text-align: left;
+    }
+
+    .tag-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .tag-grid > li,
+    .tag-grid > li[data-orientation='landscape'] {
+      grid-column: span 4;
+    }
+
+    .tag-notice {
+      display: block;
+    }
+
+    .tag-notice > span {
+      display: block;
+      margin-bottom: 2rem;
+    }
+
+    .tag-notice > a {
+      display: block;
+      margin-top: 2rem;
+    }
+
+    .tag-pagination {
+      gap: 1rem;
+      grid-template-columns: 1fr 1fr;
+      padding: 1rem 0;
+    }
+
+    .tag-pagination__pages {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      justify-content: flex-start;
+      overflow-x: auto;
+    }
+
+    .tag-pagination__next {
+      grid-column: 2;
+      grid-row: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-reveal]),
+    :global([data-image-reveal]),
+    :global([data-image-reveal] > *) {
+      clip-path: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

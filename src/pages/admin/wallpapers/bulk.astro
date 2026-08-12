@@ -1,0 +1,387 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Category } from '@/types';
+
+const db = env.DB;
+
+let categories: Category[] = [];
+if (db) {
+  try {
+    categories = await DBService.getCategories(db);
+  } catch (e) {
+    console.error('Failed to load categories for bulk upload:', e);
+  }
+}
+---
+
+<AdminLayout title="Bulk Wallpaper Upload | Admin" activeTab="wallpapers">
+  <div style="max-width: 950px; margin: 0 auto;">
+    
+    <!-- Top Header Navigation -->
+    <div style="margin-bottom: 2rem;">
+      <a href="/admin/wallpapers" style="color: var(--text-secondary); text-decoration: none; font-size: 0.9rem;">&larr; Back to Wallpapers</a>
+      <h1 style="font-family: var(--font-heading); font-size: 2rem; font-weight: 800; margin-top: 0.5rem;">
+        ⚡ Bulk Master Wallpaper Upload
+      </h1>
+      <p style="color: var(--text-secondary); font-size: 0.95rem;">
+        Select multiple master image files at once. Titles are auto-cleaned and editable directly in the list.
+      </p>
+    </div>
+
+    <!-- Alert Containers -->
+    <div id="error-alert" role="status" aria-live="polite" tabindex="-1" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 1rem; border-radius: var(--radius-sm); margin-bottom: 1.5rem;"></div>
+
+    <!-- Batch Control Form -->
+    <div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 2rem; margin-bottom: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+      
+      <!-- Multi-File Dropzone -->
+      <div>
+        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Master Image Files (Multiple Selection)</label>
+        <div id="bulk-dropzone" role="button" tabindex="0" aria-controls="bulk-file-input" style="border: 2px dashed var(--border-medium); border-radius: var(--radius-md); padding: 3rem 1.5rem; text-align: center; background: var(--bg-surface-elevated); cursor: pointer; transition: var(--transition-fast);">
+          <input type="file" id="bulk-file-input" multiple accept="image/jpeg,image/png,image/webp,image/avif" style="display: none;" />
+          <p style="font-weight: 600; font-size: 1.15rem; margin-bottom: 0.25rem; color: var(--accent-primary);">
+            Click or Drag Multiple Image Files Here
+          </p>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">
+            Select 5, 10, or 20+ master files at once (JPG, PNG, WebP, AVIF)
+          </p>
+        </div>
+      </div>
+
+      <!-- Batch Base Title Prefix & Shared Controls -->
+      <div style="display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 1rem; align-items: end;">
+        
+        <div>
+          <label for="base-prefix-input" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Batch Base Title (Optional Naming Prefix)</label>
+          <div style="display: flex; gap: 0.5rem;">
+            <input type="text" id="base-prefix-input" placeholder="e.g. Dark Fantasy" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);" />
+            <button type="button" id="apply-prefix-btn" style="padding: 0.75rem 1rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); color: var(--text-primary); border-radius: var(--radius-sm); font-weight: 600; cursor: pointer; white-space: nowrap;">Apply to All</button>
+          </div>
+        </div>
+
+        <div>
+          <label for="shared-category" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Batch Category *</label>
+          <select id="shared-category" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="">Select 1 Shared Category...</option>
+            {categories.map((cat) => (
+              <option value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label for="shared-status" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Publish Status</label>
+          <select id="shared-status" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="published">Published (Visible immediately)</option>
+            <option value="draft">Draft (Private preview)</option>
+          </select>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Live Progress Bar -->
+    <div id="progress-container" style="display: none; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 2rem;">
+      <div style="display: flex; justify-content: space-between; font-weight: 600; font-size: 0.95rem; margin-bottom: 0.5rem;">
+        <span id="progress-text">Uploading batch...</span>
+        <span id="progress-percent">0%</span>
+      </div>
+      <div style="width: 100%; height: 10px; background: var(--bg-surface-elevated); border-radius: var(--radius-full); overflow: hidden;">
+        <div id="progress-bar" style="width: 0%; height: 100%; background: var(--accent-primary); transition: width 0.3s ease;"></div>
+      </div>
+    </div>
+
+    <!-- Selected File Preview Queue Table -->
+    <div id="queue-container" style="display: none; background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 2rem;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h2 style="font-family: var(--font-heading); font-size: 1.25rem; font-weight: 700;">
+          Selected Files Queue (<span id="queue-count">0</span>)
+        </h2>
+        <button id="start-upload-btn" style="padding: 0.875rem 1.75rem; background: var(--accent-primary); color: #fff; border: none; border-radius: var(--radius-full); font-weight: 700; font-size: 1rem; cursor: pointer; transition: var(--transition-fast);">
+          Upload Batch
+        </button>
+      </div>
+
+      <div style="overflow-x: auto;">
+        <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.875rem;">
+          <thead>
+            <tr style="border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary);">
+              <th style="padding: 0.75rem;">Preview</th>
+              <th style="padding: 0.75rem; width: 35%;">Editable Title</th>
+              <th style="padding: 0.75rem;">Dimensions</th>
+              <th style="padding: 0.75rem;">Size</th>
+              <th style="padding: 0.75rem;">Upload Status</th>
+              <th style="padding: 0.75rem; text-align: right;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="queue-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    import { processImageFile, generateCanvasPreviewBlob, type ImageExtractionResult } from '@/lib/image-processor';
+
+    const bulkDropzone = document.getElementById('bulk-dropzone') as HTMLDivElement;
+    const bulkInput = document.getElementById('bulk-file-input') as HTMLInputElement;
+    const queueContainer = document.getElementById('queue-container') as HTMLDivElement;
+    const queueBody = document.getElementById('queue-body') as HTMLTableSectionElement;
+    const queueCount = document.getElementById('queue-count') as HTMLSpanElement;
+    const startUploadBtn = document.getElementById('start-upload-btn') as HTMLButtonElement;
+    const basePrefixInput = document.getElementById('base-prefix-input') as HTMLInputElement;
+    const applyPrefixBtn = document.getElementById('apply-prefix-btn') as HTMLButtonElement;
+    const sharedCategorySelect = document.getElementById('shared-category') as unknown as HTMLSelectElement;
+    const sharedStatusSelect = document.getElementById('shared-status') as unknown as HTMLSelectElement;
+    const progressContainer = document.getElementById('progress-container') as HTMLDivElement;
+    const progressBar = document.getElementById('progress-bar') as HTMLDivElement;
+    const progressText = document.getElementById('progress-text') as HTMLSpanElement;
+    const progressPercent = document.getElementById('progress-percent') as HTMLSpanElement;
+    const errorAlert = document.getElementById('error-alert') as HTMLDivElement;
+
+    interface QueueItem {
+      file: File;
+      meta?: ImageExtractionResult;
+      previewUrl: string;
+      title: string;
+      status: 'pending' | 'uploading' | 'success' | 'duplicate' | 'error';
+      message?: string;
+    }
+
+    let fileQueue: QueueItem[] = [];
+    let uploadActive = false;
+
+    bulkDropzone.addEventListener('click', () => bulkInput.click());
+    bulkDropzone.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); bulkInput.click(); }
+    });
+    
+    bulkDropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      bulkDropzone.style.borderColor = 'var(--accent-primary)';
+    });
+
+    bulkDropzone.addEventListener('dragleave', () => {
+      bulkDropzone.style.borderColor = 'var(--border-medium)';
+    });
+
+    bulkDropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      bulkDropzone.style.borderColor = 'var(--border-medium)';
+      if (e.dataTransfer?.files.length) {
+        addFilesToQueue(Array.from(e.dataTransfer.files));
+      }
+    });
+
+    bulkInput.addEventListener('change', () => {
+      if (bulkInput.files?.length) {
+        addFilesToQueue(Array.from(bulkInput.files));
+      }
+    });
+
+    function cleanFilename(filename: string, itemIndex: number): string {
+      const raw = filename.replace(/\.[^/.]+$/, '');
+      
+      // If filename starts with WhatsApp Image or IMG_ or PXL_ or timestamp
+      if (/^(WhatsApp Image|IMG|PXL|\d{8})/i.test(raw)) {
+        return `Artwork #${itemIndex + 1}`;
+      }
+
+      return raw.replace(/[-_]/g, ' ').replace(/\s+/g, ' ').trim() || `Artwork #${itemIndex + 1}`;
+    }
+
+    async function addFilesToQueue(files: File[]) {
+      const currentCount = fileQueue.length;
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const autoTitle = cleanFilename(file.name, currentCount + i);
+
+        const item: QueueItem = {
+          file,
+          previewUrl: URL.createObjectURL(file),
+          title: autoTitle,
+          status: 'pending',
+        };
+        fileQueue.push(item);
+      }
+
+      renderQueue();
+      processQueueMetadata();
+    }
+
+    applyPrefixBtn.addEventListener('click', () => {
+      const prefix = basePrefixInput.value.trim();
+      if (!prefix) return;
+
+      fileQueue.forEach((item, idx) => {
+        item.title = `${prefix} #${idx + 1}`;
+      });
+      renderQueue();
+    });
+
+    async function processQueueMetadata() {
+      for (const item of [...fileQueue]) {
+        if (!item.meta) {
+          try {
+            const meta = await processImageFile(item.file);
+            if (!fileQueue.includes(item)) continue;
+            item.meta = meta;
+            renderQueue();
+          } catch (error) {
+            if (!fileQueue.includes(item)) continue;
+            item.status = 'error';
+            item.message = error instanceof Error ? error.message : 'Invalid image';
+            renderQueue();
+          }
+        }
+      }
+    }
+
+    function renderQueue() {
+      if (fileQueue.length === 0) {
+        queueContainer.style.display = 'none';
+        return;
+      }
+
+      queueContainer.style.display = 'block';
+      queueCount.innerText = fileQueue.length.toString();
+      startUploadBtn.innerText = `Upload Batch (${fileQueue.length} Files)`;
+
+      const rows = fileQueue.map((item, index) => {
+          const dims = item.meta ? `${item.meta.width} × ${item.meta.height}` : 'Extracting...';
+          const sizeMb = (item.file.size / (1024 * 1024)).toFixed(2);
+          const row = document.createElement('tr'); row.style.borderBottom = '1px solid var(--border-subtle)';
+          const previewCell = document.createElement('td'); previewCell.style.padding = '0.75rem';
+          const preview = document.createElement('img'); preview.src = item.previewUrl; preview.alt = '';
+          preview.style.cssText = 'width:60px;height:40px;object-fit:cover;border-radius:4px;border:1px solid var(--border-subtle)';
+          previewCell.appendChild(preview);
+          const titleCell = document.createElement('td'); titleCell.style.padding = '0.75rem';
+          const title = document.createElement('input'); title.type = 'text'; title.maxLength = 150;
+          title.dataset.titleIndex = String(index); title.className = 'queue-title-input'; title.value = item.title;
+          title.style.cssText = 'width:100%;padding:.45rem .65rem;background:var(--bg-surface-elevated);border:1px solid var(--border-subtle);border-radius:var(--radius-sm);color:var(--text-primary);font-weight:600';
+          title.addEventListener('input', () => { item.title = title.value; }); titleCell.appendChild(title);
+          const dimensionCell = document.createElement('td'); dimensionCell.style.cssText = 'padding:.75rem;color:var(--text-secondary)'; dimensionCell.textContent = dims;
+          const sizeCell = document.createElement('td'); sizeCell.style.cssText = 'padding:.75rem;color:var(--text-secondary)'; sizeCell.textContent = `${sizeMb} MB`;
+          const statusCell = document.createElement('td'); statusCell.style.padding = '.75rem';
+          const status = document.createElement('span');
+          const statusMap: Record<QueueItem['status'], [string, string]> = {
+            pending: ['Ready', 'var(--text-muted)'], uploading: ['Uploading…', '#60a5fa'],
+            success: ['✓ Completed', '#4ade80'], duplicate: ['⚠ Duplicate skipped', '#fde047'],
+            error: [`✕ ${item.message || 'Error'}`, '#fca5a5'],
+          };
+          [status.textContent, status.style.color] = statusMap[item.status]; status.style.fontWeight = '600'; statusCell.appendChild(status);
+          const actionCell = document.createElement('td'); actionCell.style.cssText = 'padding:.75rem;text-align:right';
+          const remove = document.createElement('button'); remove.type = 'button'; remove.textContent = '×'; remove.ariaLabel = `Remove ${item.title}`;
+          remove.className = 'remove-btn'; remove.disabled = uploadActive;
+          remove.style.cssText = 'background:none;border:none;color:#fca5a5;cursor:pointer;font-weight:700';
+          remove.addEventListener('click', () => { URL.revokeObjectURL(item.previewUrl); fileQueue.splice(index, 1); renderQueue(); });
+          actionCell.appendChild(remove);
+          [previewCell, titleCell, dimensionCell, sizeCell, statusCell, actionCell].forEach((cell) => row.appendChild(cell));
+          return row;
+        });
+      queueBody.replaceChildren(...rows);
+
+    }
+
+    startUploadBtn.addEventListener('click', async () => {
+      const categoryId = sharedCategorySelect.value;
+      if (!categoryId) {
+        alert('Please select a batch Category first.');
+        return;
+      }
+
+      if (fileQueue.length === 0) {
+        alert('Please select at least 1 image file for bulk upload.');
+        return;
+      }
+
+      errorAlert.style.display = 'none';
+      startUploadBtn.disabled = true;
+      uploadActive = true;
+      progressContainer.style.display = 'block';
+
+      let successCount = 0;
+      const targets = fileQueue.filter((item) => item.status === 'pending' || item.status === 'error');
+      const total = targets.length;
+
+      for (let i = 0; i < targets.length; i++) {
+        const item = targets[i];
+
+        item.status = 'uploading';
+        renderQueue();
+
+        const pct = Math.round(((i + 1) / total) * 100);
+        progressBar.style.width = `${pct}%`;
+        progressPercent.innerText = `${pct}%`;
+        progressText.innerText = `Uploading file ${i + 1} of ${total}: "${item.title}"...`;
+
+        try {
+          if (!item.meta) {
+            item.meta = await processImageFile(item.file);
+          }
+
+          const formData = new FormData();
+          formData.append('originalFile', item.file);
+          formData.append('categoryId', categoryId);
+          formData.append('status', sharedStatusSelect.value);
+          formData.append('width', item.meta.width.toString());
+          formData.append('height', item.meta.height.toString());
+          formData.append('fileHash', item.meta.fileHash);
+          formData.append('title', item.title);
+
+          if (item.file.size > 20 * 1024 * 1024) {
+            const p480Blob = await generateCanvasPreviewBlob(item.file, 480, 'image/webp', 0.85);
+            const p960Blob = await generateCanvasPreviewBlob(item.file, 960, 'image/webp', 0.85);
+            const p1600Blob = await generateCanvasPreviewBlob(item.file, 1600, 'image/webp', 0.85);
+            formData.append('p480File', p480Blob, '480.webp');
+            formData.append('p960File', p960Blob, '960.webp');
+            formData.append('p1600File', p1600Blob, '1600.webp');
+            formData.append('fallbackFile', p1600Blob, 'fallback.webp');
+          }
+
+          const res = await fetch('/api/admin/wallpapers/bulk', {
+            method: 'POST',
+            body: formData,
+          });
+
+          const data = (await res.json().catch(() => ({}))) as { success?: boolean; isDuplicate?: boolean; error?: string };
+          if (res.status === 401) { window.location.assign('/admin/login'); return; }
+          if (res.ok && data.success) {
+            item.status = 'success';
+            successCount++;
+          } else if (data.isDuplicate) {
+            item.status = 'duplicate';
+          } else {
+            item.status = 'error';
+            item.message = data.error || 'Upload failed';
+          }
+        } catch (error) {
+          item.status = 'error';
+          item.message = error instanceof Error ? error.message : 'Error processing preview';
+        }
+
+        renderQueue();
+      }
+
+      startUploadBtn.disabled = false;
+      uploadActive = false;
+      const failedCount = targets.filter((item) => item.status === 'error').length;
+      progressText.innerText = `Batch finished: ${successCount} uploaded, ${failedCount} failed.`;
+      startUploadBtn.innerText = failedCount ? `Retry ${failedCount} Failed` : 'Upload Complete';
+      startUploadBtn.disabled = failedCount === 0;
+      errorAlert.textContent = failedCount
+        ? 'Some uploads failed. Review the queue and retry only failed items.'
+        : 'All selected files were processed successfully.';
+      errorAlert.style.display = 'block';
+      errorAlert.focus({ preventScroll: false });
+    });
+    window.addEventListener('beforeunload', (event) => {
+      if (uploadActive) { event.preventDefault(); (event as unknown as { returnValue: string }).returnValue = ''; }
+      fileQueue.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+    });
+  </script>
+</AdminLayout>

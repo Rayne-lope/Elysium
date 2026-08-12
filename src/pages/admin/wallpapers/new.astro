@@ -1,0 +1,268 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Category } from '@/types';
+
+const db = env.DB;
+
+let categories: Category[] = [];
+
+if (db) {
+  try {
+    categories = await DBService.getCategories(db);
+  } catch (e) {
+    console.error('Failed to load categories/tags:', e);
+  }
+}
+---
+
+<AdminLayout title="Upload Wallpaper | Admin" activeTab="wallpapers">
+  <div style="max-width: 800px; margin: 0 auto;">
+    
+    <div style="margin-bottom: 2rem;">
+      <a href="/admin/wallpapers" style="color: var(--text-secondary); text-decoration: none; font-size: 0.9rem;">&larr; Back to Wallpapers</a>
+      <h1 style="font-family: var(--font-heading); font-size: 2rem; font-weight: 800; margin-top: 0.5rem;">
+        Upload New Master Wallpaper
+      </h1>
+      <p style="color: var(--text-secondary); font-size: 0.95rem;">
+        Upload untouched original image master file. Previews will be generated automatically.
+      </p>
+    </div>
+
+    <div id="error-alert" role="alert" aria-live="assertive" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 1rem; border-radius: var(--radius-sm); margin-bottom: 1.5rem;"></div>
+    <div id="duplicate-warning" role="status" aria-live="polite" style="display: none; background: rgba(234, 179, 8, 0.15); border: 1px solid rgba(234, 179, 8, 0.4); color: #fde047; padding: 1rem; border-radius: var(--radius-sm); margin-bottom: 1.5rem;"></div>
+
+    <form id="upload-form" style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 2rem; display: flex; flex-direction: column; gap: 1.5rem;">
+      
+      <!-- File Dropzone -->
+      <div>
+        <label style="display: block; font-weight: 600; margin-bottom: 0.5rem;">Original Image File (JPEG, PNG, WebP, AVIF)</label>
+        <div id="dropzone" role="button" tabindex="0" aria-controls="file-input" style="border: 2px dashed var(--border-medium); border-radius: var(--radius-md); padding: 3rem 1.5rem; text-align: center; background: var(--bg-surface-elevated); cursor: pointer; transition: var(--transition-fast);">
+          <input type="file" id="file-input" name="originalFile" accept="image/jpeg,image/png,image/webp,image/avif" required style="display: none;" />
+          <div id="dropzone-prompt">
+            <p style="font-weight: 600; font-size: 1.1rem; margin-bottom: 0.25rem;">Click or Drag Master Image File Here</p>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Supports JPG, PNG, WebP, AVIF up to 50MB</p>
+          </div>
+          <div id="file-info" style="display: none; padding: 0.5rem;">
+            <img id="preview-img" alt="Selected Wallpaper Preview" style="max-height: 280px; width: auto; max-width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-medium); margin: 0 auto 1rem; display: block; box-shadow: 0 8px 24px rgba(0,0,0,0.4); object-fit: contain;" />
+            <p id="file-name" style="font-weight: 700; color: var(--accent-primary); font-size: 1.1rem;"></p>
+            <p id="file-details" style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0.25rem;"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Content Fields -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div>
+          <label for="title" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Wallpaper Title *</label>
+          <input type="text" id="title" name="title" required placeholder="e.g. Misty Alpine Impasto" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);" />
+        </div>
+
+        <div>
+          <label for="categoryId" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Category</label>
+          <select id="categoryId" name="categoryId" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="">Select Category...</option>
+            {categories.map((cat) => (
+              <option value={cat.id}>{cat.name}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label for="description" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Description</label>
+        <textarea id="description" name="description" rows="3" placeholder="Brief description of artwork composition and mood..." style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);"></textarea>
+      </div>
+
+      <!-- Metadata Auto Extracted -->
+      <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); padding: 1rem; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; font-size: 0.85rem;">
+        <div><span style="color: var(--text-muted); display: block;">Dimensions</span><strong id="meta-dims">-</strong></div>
+        <div><span style="color: var(--text-muted); display: block;">Orientation</span><strong id="meta-orient">-</strong></div>
+        <div><span style="color: var(--text-muted); display: block;">Resolution</span><strong id="meta-res">-</strong></div>
+        <div><span style="color: var(--text-muted); display: block;">File Size</span><strong id="meta-size">-</strong></div>
+      </div>
+
+      <!-- Publishing & Attribution Options -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+        <div>
+          <label for="status" style="display: block; font-weight: 600; margin-bottom: 0.4rem; font-size: 0.9rem;">Publish Status</label>
+          <select id="status" name="status" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);">
+            <option value="published">Published (Visible immediately)</option>
+            <option value="draft">Draft (Private preview only)</option>
+          </select>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.5rem; margin-top: 1.5rem;">
+          <input type="checkbox" id="isFeatured" name="isFeatured" value="true" style="width: 1.2rem; height: 1.2rem; cursor: pointer;" />
+          <label for="isFeatured" style="font-weight: 600; cursor: pointer; font-size: 0.9rem;">Feature on Homepage Hero</label>
+        </div>
+      </div>
+
+      <button type="submit" id="submit-btn" style="padding: 1rem; background: var(--accent-primary); color: #ffffff; border: none; border-radius: var(--radius-sm); font-weight: 700; font-size: 1rem; cursor: pointer; transition: var(--transition-fast);">
+        Upload Master File & Publish
+      </button>
+
+    </form>
+  </div>
+
+  <script>
+    import { processImageFile, generateCanvasPreviewBlob, type ImageExtractionResult } from '@/lib/image-processor';
+
+    const dropzone = document.getElementById('dropzone') as HTMLDivElement;
+    const fileInput = document.getElementById('file-input') as HTMLInputElement;
+    const dropzonePrompt = document.getElementById('dropzone-prompt') as HTMLDivElement;
+    const fileInfo = document.getElementById('file-info') as HTMLDivElement;
+    const fileName = document.getElementById('file-name') as HTMLParagraphElement;
+    const fileDetails = document.getElementById('file-details') as HTMLParagraphElement;
+    
+    const titleInput = document.getElementById('title') as HTMLInputElement;
+    const errorAlert = document.getElementById('error-alert') as HTMLDivElement;
+    const duplicateWarning = document.getElementById('duplicate-warning') as HTMLDivElement;
+    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
+    const form = document.getElementById('upload-form') as HTMLFormElement;
+
+    let selectedFile: File | null = null;
+    let extractedMeta: ImageExtractionResult | null = null;
+    let previewUrl: string | null = null;
+    let selectionVersion = 0;
+    let uploadActive = false;
+
+    dropzone.addEventListener('click', () => fileInput.click());
+    dropzone.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fileInput.click(); }
+    });
+    
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'var(--accent-primary)';
+    });
+
+    dropzone.addEventListener('dragleave', () => {
+      dropzone.style.borderColor = 'var(--border-medium)';
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.style.borderColor = 'var(--border-medium)';
+      if (e.dataTransfer?.files.length) {
+        fileInput.files = e.dataTransfer.files;
+        handleFileSelect(e.dataTransfer.files[0]);
+      }
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files?.length) {
+        handleFileSelect(fileInput.files[0]);
+      }
+    });
+
+    async function handleFileSelect(file: File) {
+      const version = ++selectionVersion;
+      selectedFile = file;
+      extractedMeta = null;
+      dropzonePrompt.style.display = 'none';
+      fileInfo.style.display = 'block';
+      fileName.innerText = file.name;
+
+      const previewImg = document.getElementById('preview-img') as HTMLImageElement;
+      if (previewImg) {
+        if (previewUrl) URL.revokeObjectURL(previewUrl);
+        previewUrl = URL.createObjectURL(file);
+        previewImg.src = previewUrl;
+      }
+
+      try {
+        const metadata = await processImageFile(file);
+        if (version !== selectionVersion || selectedFile !== file) return;
+        extractedMeta = metadata;
+        
+        (document.getElementById('meta-dims') as HTMLElement).innerText = `${extractedMeta.width} x ${extractedMeta.height}`;
+        (document.getElementById('meta-orient') as HTMLElement).innerText = extractedMeta.orientation;
+        (document.getElementById('meta-res') as HTMLElement).innerText = extractedMeta.resolutionLabel;
+        (document.getElementById('meta-size') as HTMLElement).innerText = `${(file.size / (1024 * 1024)).toFixed(2)} MB`;
+
+        if (!titleInput.value) {
+          titleInput.value = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+        }
+
+        // Check Duplicate Hash
+        const dupRes = await fetch('/api/admin/wallpapers/check-duplicate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileHash: extractedMeta.fileHash }),
+        });
+        const dupData = (await dupRes.json().catch(() => ({}))) as { isDuplicate?: boolean; existingWallpaper?: { title: string } };
+        if (version !== selectionVersion || selectedFile !== file) return;
+        if (dupRes.status === 401) { window.location.assign('/admin/login'); return; }
+        if (dupData.isDuplicate && dupData.existingWallpaper) {
+          duplicateWarning.innerText = `Warning: An identical master file already exists in catalog ("${dupData.existingWallpaper.title}").`;
+          duplicateWarning.style.display = 'block';
+        } else {
+          duplicateWarning.style.display = 'none';
+        }
+
+      } catch (error) {
+        if (version !== selectionVersion) return;
+        fileDetails.innerText = `Error: ${error instanceof Error ? error.message : 'Invalid image'}`;
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!selectedFile || !extractedMeta) {
+        alert('Please select a valid master image file first.');
+        return;
+      }
+
+      errorAlert.style.display = 'none';
+      submitBtn.disabled = true;
+      uploadActive = true;
+      submitBtn.innerText = 'Processing previews & uploading...';
+
+      try {
+        const formData = new FormData(form);
+        formData.set('originalFile', selectedFile);
+        formData.append('width', extractedMeta.width.toString());
+        formData.append('height', extractedMeta.height.toString());
+        formData.append('fileHash', extractedMeta.fileHash);
+
+        if (selectedFile.size > 20 * 1024 * 1024) {
+          const p480Blob = await generateCanvasPreviewBlob(selectedFile, 480, 'image/webp', 0.85);
+          const p960Blob = await generateCanvasPreviewBlob(selectedFile, 960, 'image/webp', 0.85);
+          const p1600Blob = await generateCanvasPreviewBlob(selectedFile, 1600, 'image/webp', 0.85);
+          formData.append('p480File', p480Blob, '480.webp');
+          formData.append('p960File', p960Blob, '960.webp');
+          formData.append('p1600File', p1600Blob, '1600.webp');
+          formData.append('fallbackFile', p1600Blob, 'fallback.webp');
+        }
+
+        const res = await fetch('/api/admin/wallpapers', {
+          method: 'POST',
+          body: formData,
+        });
+
+        const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+        if (res.status === 401) { window.location.assign('/admin/login'); return; }
+        if (res.ok && data.success) {
+          window.location.href = '/admin/wallpapers';
+        } else {
+          errorAlert.innerText = data.error || 'Upload failed';
+          errorAlert.style.display = 'block';
+        }
+      } catch (error) {
+        errorAlert.innerText = `Upload error: ${error instanceof Error ? error.message : 'Upload failed'}`;
+        errorAlert.style.display = 'block';
+      } finally {
+        uploadActive = false;
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Upload Master File & Publish';
+      }
+    });
+    window.addEventListener('beforeunload', (event) => {
+      if (uploadActive) { event.preventDefault(); (event as unknown as { returnValue: string }).returnValue = ''; }
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    });
+  </script>
+
+</AdminLayout>

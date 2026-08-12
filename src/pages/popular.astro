@@ -1,0 +1,852 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import 'lenis/dist/lenis.css';
+import { env } from 'cloudflare:workers';
+import Layout from '@/layouts/Layout.astro';
+import FilterBar from '@/components/public/FilterBar.astro';
+import ResponsiveWallpaperImage from '@/components/public/ResponsiveWallpaperImage.astro';
+import { DBService, type ListWallpaperFilters } from '@worker/services/db.service';
+import type { Wallpaper, Category } from '@/types';
+import { explorePaginationItems } from '@/lib/explore';
+import {
+  buildCollectionPageUrl,
+  collectionResultRange,
+  globalCollectionRank,
+} from '@/lib/collection-pages';
+import { parseWallpaperFilters } from '@/lib/validation';
+
+const db = env.DB;
+const url = new URL(Astro.request.url);
+let invalidFilters = false;
+let parsedFilters: ListWallpaperFilters = {
+  page: 1,
+  limit: 20,
+  status: 'published',
+  sortBy: 'popular',
+};
+
+try {
+  parsedFilters = parseWallpaperFilters(url.searchParams, true);
+  if (url.searchParams.has('q') || url.searchParams.has('tag') || url.searchParams.has('sort')) {
+    throw new Error('Unsupported ranking filter');
+  }
+} catch {
+  invalidFilters = true;
+  Astro.response.status = 400;
+}
+
+const currentCategory = parsedFilters.categorySlug || '';
+const currentOrientation = parsedFilters.orientation || '';
+const currentPage = parsedFilters.page || 1;
+const pageSize = parsedFilters.limit || 20;
+
+let categories: Category[] = [];
+let wallpapers: Wallpaper[] = [];
+let totalWallpapers = 0;
+let totalPages = 1;
+let databaseUnavailable = !db && !invalidFilters;
+
+if (db && !invalidFilters) {
+  try {
+    const [categoryResult, wallpaperResult] = await Promise.all([
+      DBService.getCategories(db),
+      DBService.listWallpapers(db, {
+        page: currentPage,
+        limit: pageSize,
+        status: 'published',
+        categorySlug: currentCategory || undefined,
+        orientation: currentOrientation || undefined,
+        sortBy: 'popular',
+      }),
+    ]);
+
+    categories = categoryResult;
+    wallpapers = wallpaperResult.wallpapers;
+    totalWallpapers = wallpaperResult.total;
+    totalPages = wallpaperResult.totalPages;
+  } catch (error) {
+    console.error('Failed to load Most Collected ledger:', error);
+    databaseUnavailable = true;
+    Astro.response.status = 503;
+  }
+} else if (databaseUnavailable) {
+  Astro.response.status = 503;
+}
+
+const { start: resultStart, end: resultEnd } = collectionResultRange(
+  currentPage,
+  pageSize,
+  wallpapers.length,
+);
+const hasActiveFilters = Boolean(currentCategory || currentOrientation);
+const paginationItems = explorePaginationItems(currentPage, totalPages);
+
+function getPageUrl(pageNumber: number): string {
+  return buildCollectionPageUrl(
+    '/popular',
+    url.searchParams,
+    pageNumber,
+    ['limit', 'category', 'orientation'],
+  );
+}
+---
+
+<Layout
+  title="Most Collected Wallpaper Masters | Elysium"
+  description="Browse the Elysium archive ranked by the master wallpapers collected most often."
+  activePage="popular"
+  surface="popular-luxury"
+>
+  <section class="popular-hero" aria-labelledby="popular-title">
+    <div class="popular-frame">
+      <div class="popular-register" data-reveal>
+        <p>Acquisition ranking</p>
+        <p>Ledger / {String(currentPage).padStart(3, '0')}</p>
+        <p>{hasActiveFilters ? 'Scoped ranking' : 'Complete register'}</p>
+      </div>
+
+      <h1 id="popular-title" data-reveal>
+        <span>MOST</span>
+        <span>COLLECTED</span>
+      </h1>
+
+      <div class="popular-notes" data-reveal>
+        <p>
+          A live register ordered by the works acquired most often from the Elysium archive.
+        </p>
+
+        <dl>
+          <div>
+            <dt>Ranked</dt>
+            <dd>{String(totalWallpapers).padStart(3, '0')}</dd>
+          </div>
+          <div>
+            <dt>Visible</dt>
+            <dd>{resultStart > 0 ? `${String(resultStart).padStart(3, '0')} / ${String(resultEnd).padStart(3, '0')}` : '000 / 000'}</dd>
+          </div>
+          <div>
+            <dt>Sequence</dt>
+            <dd>Collected</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  {!databaseUnavailable && !invalidFilters && (
+    <FilterBar
+      appearance="archive"
+      action="/popular"
+      resetHref="/popular"
+      resetLabel="Clear ranking ×"
+      statusLabel="Ranking scope"
+      idleSummary="All formats · All categories · Most collected"
+      showSearch={false}
+      showSort={false}
+      categories={categories}
+      currentCategory={currentCategory}
+      currentOrientation={currentOrientation}
+      currentSort="popular"
+    />
+  )}
+
+  <section class="popular-ledger popular-frame" aria-labelledby="popular-ledger-title">
+    <header class="popular-heading" data-reveal>
+      <div>
+        <p>01 / Acquisition frequency</p>
+        <h2 id="popular-ledger-title">Ranking Ledger</h2>
+      </div>
+      <p>
+        {invalidFilters
+          ? 'Invalid ranking parameters'
+          : databaseUnavailable
+            ? 'Archive connection unavailable'
+            : totalWallpapers > 0
+              ? `${totalWallpapers.toLocaleString('en-US')} ranked works`
+              : 'No collected records'}
+      </p>
+    </header>
+
+    {invalidFilters ? (
+      <div class="popular-notice" role="alert" data-reveal>
+        <span>Request note / 400</span>
+        <div>
+          <h2>Invalid ranking query</h2>
+          <p>Most Collected accepts format and category parameters only.</p>
+        </div>
+        <a href="/popular">Open clean ranking</a>
+      </div>
+    ) : databaseUnavailable ? (
+      <div class="popular-notice" role="alert" data-reveal>
+        <span>Service note / 503</span>
+        <div>
+          <h2>Ranking unavailable</h2>
+          <p>The archive connection could not be established. Please try again shortly.</p>
+        </div>
+        <a href={Astro.url.pathname + Astro.url.search}>Retry request</a>
+      </div>
+    ) : wallpapers.length === 0 ? (
+      <div class="popular-notice" data-reveal>
+        <span>{hasActiveFilters ? 'Query returned / 000' : 'Ranking state / 000'}</span>
+        <div>
+          <h2>{hasActiveFilters ? 'No scoped ranking' : 'No collections recorded'}</h2>
+          <p>
+            {hasActiveFilters
+              ? 'No published records match the selected format and category.'
+              : 'Published masters will appear here once archive acquisitions are recorded.'}
+          </p>
+        </div>
+        <a href={hasActiveFilters ? '/popular' : '/explore'}>
+          {hasActiveFilters ? 'Reset ranking scope' : 'Browse complete archive'}
+        </a>
+      </div>
+    ) : (
+      <>
+        <ol class="ranking-list" aria-label="Most collected wallpaper ranking">
+          {wallpapers.map((wallpaper, index) => {
+            const rank = globalCollectionRank(currentPage, pageSize, index);
+            const aspectRatio = wallpaper.aspectRatio || wallpaper.width / wallpaper.height;
+
+            return (
+              <li data-reveal>
+                <a href={`/wallpaper/${wallpaper.slug}`}>
+                  <span class="ranking-number">{String(rank).padStart(2, '0')}</span>
+
+                  <div class="ranking-identity">
+                    <h3>{wallpaper.title}</h3>
+                    <p>{wallpaper.orientation}</p>
+                  </div>
+
+                  <div class="ranking-artwork" style={`aspect-ratio: ${aspectRatio};`} data-image-reveal>
+                    <ResponsiveWallpaperImage
+                      wallpaper={wallpaper}
+                      sizes="(max-width: 700px) calc(100vw - 2rem), (max-width: 1100px) 35vw, 24vw"
+                      loading={index === 0 ? 'eager' : 'lazy'}
+                      fetchPriority={index === 0 ? 'high' : 'auto'}
+                      pictureClass="ranking-picture"
+                      imageClass="ranking-image"
+                    />
+                  </div>
+
+                  <dl class="ranking-specification">
+                    <div>
+                      <dt>Resolution</dt>
+                      <dd>{wallpaper.width} × {wallpaper.height}</dd>
+                    </div>
+                    <div>
+                      <dt>File</dt>
+                      <dd>{wallpaper.resolutionLabel || wallpaper.format.toUpperCase()}</dd>
+                    </div>
+                    <div>
+                      <dt>Collected</dt>
+                      <dd>{wallpaper.downloadCount.toLocaleString('en-US')}</dd>
+                    </div>
+                  </dl>
+
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 12h15M13 6l6 6-6 6"></path>
+                  </svg>
+                </a>
+              </li>
+            );
+          })}
+        </ol>
+
+        {totalPages > 1 && (
+          <nav class="popular-pagination" aria-label="Most collected pagination" data-reveal>
+            <div>
+              {currentPage > 1 ? <a href={getPageUrl(currentPage - 1)} rel="prev">← Previous ranking</a> : <span>← Previous ranking</span>}
+            </div>
+
+            <div class="popular-pagination__pages">
+              {paginationItems.map((item, index) => item === 'gap' ? (
+                <span aria-hidden="true" data-gap-index={index}>···</span>
+              ) : (
+                <a href={getPageUrl(item)} aria-current={item === currentPage ? 'page' : undefined} aria-label={`Page ${item}`}>
+                  {String(item).padStart(2, '0')}
+                </a>
+              ))}
+            </div>
+
+            <div class="popular-pagination__next">
+              {currentPage < totalPages ? <a href={getPageUrl(currentPage + 1)} rel="next">Next ranking →</a> : <span>Next ranking →</span>}
+            </div>
+
+            <p>Page {String(currentPage).padStart(2, '0')} / {String(totalPages).padStart(2, '0')}</p>
+          </nav>
+        )}
+      </>
+    )}
+  </section>
+</Layout>
+
+<script>
+  import Lenis from 'lenis';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal], [data-image-reveal]'));
+
+  if (!reducedMotion.matches) {
+    document.documentElement.classList.add('motion-ready');
+
+    const lenis = new Lenis({
+      anchors: { offset: -138 },
+      autoRaf: true,
+      duration: 1.1,
+      easing: (time: number) => Math.min(1, 1.001 - Math.pow(2, -10 * time)),
+      smoothWheel: true,
+      stopInertiaOnNavigate: true,
+      syncTouch: false,
+      respectReducedMotion: true,
+    });
+
+    const revealObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+      : null;
+
+    requestAnimationFrame(() => {
+      if (revealObserver) revealTargets.forEach((target) => revealObserver.observe(target));
+      else revealTargets.forEach((target) => target.classList.add('is-visible'));
+    });
+
+    window.addEventListener('pagehide', () => {
+      revealObserver?.disconnect();
+      lenis.destroy();
+    }, { once: true });
+  }
+</script>
+
+<style>
+  .popular-frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding-left: var(--luxury-gutter);
+    padding-right: var(--luxury-gutter);
+  }
+
+  .popular-hero {
+    overflow: clip;
+  }
+
+  .popular-register {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.56rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.08em;
+    padding: 1rem 0;
+    text-transform: uppercase;
+  }
+
+  .popular-register p:nth-child(2) {
+    text-align: center;
+  }
+
+  .popular-register p:last-child {
+    color: var(--luxury-muted);
+    text-align: right;
+  }
+
+  .popular-hero h1 {
+    display: flex;
+    flex-direction: column;
+    font-size: clamp(4rem, 13vw, 14.5rem);
+    font-stretch: 125%;
+    font-weight: 760;
+    letter-spacing: -0.095em;
+    line-height: 0.72;
+    padding: clamp(5rem, 9vw, 9rem) 0 clamp(5.5rem, 10vw, 10rem);
+  }
+
+  .popular-hero h1 span:last-child {
+    align-self: flex-end;
+  }
+
+  .popular-notes {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding-bottom: clamp(3rem, 5vw, 5.5rem);
+  }
+
+  .popular-notes > p {
+    font-size: clamp(1.35rem, 2.4vw, 2.6rem);
+    font-stretch: 108%;
+    font-weight: 450;
+    grid-column: 1 / span 6;
+    letter-spacing: -0.045em;
+    line-height: 1.08;
+    max-width: 25ch;
+  }
+
+  .popular-notes dl {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-column: 8 / span 5;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .popular-notes dl div {
+    border-left: 1px solid var(--luxury-line);
+    min-height: 4.8rem;
+    padding: 0.8rem;
+  }
+
+  .popular-notes dl div:last-child {
+    border-right: 1px solid var(--luxury-line);
+  }
+
+  .popular-notes dt,
+  .popular-notes dd {
+    font-size: 0.56rem;
+    text-transform: uppercase;
+  }
+
+  .popular-notes dt {
+    color: var(--luxury-muted);
+    letter-spacing: 0.08em;
+    margin-bottom: 1.1rem;
+  }
+
+  .popular-ledger {
+    padding-bottom: var(--luxury-space);
+    padding-top: var(--luxury-space);
+  }
+
+  .popular-heading {
+    align-items: end;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(3rem, 6vw, 6rem);
+  }
+
+  .popular-heading > div {
+    grid-column: 1 / span 9;
+  }
+
+  .popular-heading > div > p,
+  .popular-heading > p {
+    color: var(--luxury-muted);
+    font-size: 0.56rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .popular-heading h2 {
+    font-size: clamp(2.8rem, 6vw, 7rem);
+    font-stretch: 116%;
+    font-weight: 520;
+    letter-spacing: -0.075em;
+    line-height: 0.9;
+    margin-top: 0.7rem;
+  }
+
+  .popular-heading > p {
+    grid-column: 10 / span 3;
+    text-align: right;
+  }
+
+  .ranking-list {
+    border-top: 1px solid var(--luxury-line);
+    list-style: none;
+  }
+
+  .ranking-list li {
+    border-bottom: 1px solid var(--luxury-line);
+  }
+
+  .ranking-list a {
+    align-items: center;
+    display: grid;
+    gap: clamp(0.8rem, 1.5vw, 1.6rem);
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    min-height: clamp(10rem, 16vw, 16rem);
+    padding: clamp(1.3rem, 2vw, 2rem) 0;
+    transition: background-color 560ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms ease;
+  }
+
+  .ranking-list a:hover {
+    background: var(--luxury-paper-deep);
+  }
+
+  .ranking-list a:active {
+    transform: scale(0.995);
+  }
+
+  .ranking-number {
+    color: var(--luxury-muted);
+    font-size: clamp(1.1rem, 2.4vw, 2.5rem);
+    font-stretch: 115%;
+    font-weight: 480;
+    grid-column: 1;
+    justify-self: center;
+  }
+
+  .ranking-identity {
+    grid-column: 2 / span 4;
+  }
+
+  .ranking-identity h3 {
+    font-size: clamp(1.8rem, 3.8vw, 4.5rem);
+    font-stretch: 114%;
+    font-weight: 510;
+    letter-spacing: -0.065em;
+    line-height: 0.93;
+    overflow-wrap: anywhere;
+  }
+
+  .ranking-identity p {
+    color: var(--luxury-muted);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    margin-top: 0.75rem;
+    text-transform: uppercase;
+  }
+
+  .ranking-artwork {
+    grid-column: 7 / span 3;
+    min-height: 5rem;
+    overflow: hidden;
+  }
+
+  :global(.ranking-picture) {
+    display: block;
+    height: 100%;
+    width: 100%;
+  }
+
+  :global(.ranking-image) {
+    height: 100%;
+    object-fit: cover;
+    transition: transform 1.2s cubic-bezier(0.22, 1, 0.36, 1);
+    width: 100%;
+  }
+
+  .ranking-list a:hover :global(.ranking-image) {
+    transform: scale(1.03);
+  }
+
+  .ranking-specification {
+    display: grid;
+    gap: 0.7rem;
+    grid-column: 10 / span 2;
+  }
+
+  .ranking-specification div {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: 1fr auto;
+    padding-bottom: 0.45rem;
+  }
+
+  .ranking-specification dt,
+  .ranking-specification dd {
+    font-size: 0.52rem;
+    text-transform: uppercase;
+  }
+
+  .ranking-specification dt {
+    color: var(--luxury-muted);
+    letter-spacing: 0.06em;
+  }
+
+  .ranking-list svg {
+    fill: none;
+    grid-column: 12;
+    height: 1.2rem;
+    justify-self: end;
+    stroke: currentColor;
+    stroke-width: 1.25;
+    transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+    width: 1.2rem;
+  }
+
+  .ranking-list a:hover svg {
+    transform: translateX(0.35rem);
+  }
+
+  .popular-notice {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding: clamp(2rem, 4vw, 4rem) 0;
+  }
+
+  .popular-notice > span {
+    color: var(--luxury-muted);
+    font-size: 0.56rem;
+    grid-column: span 2;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .popular-notice > div {
+    grid-column: span 7;
+  }
+
+  .popular-notice h2 {
+    font-size: clamp(1.9rem, 3.5vw, 4rem);
+    font-stretch: 112%;
+    font-weight: 520;
+    letter-spacing: -0.06em;
+    line-height: 0.95;
+  }
+
+  .popular-notice p {
+    color: var(--luxury-muted);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    margin-top: 0.8rem;
+    max-width: 60ch;
+  }
+
+  .popular-notice > a {
+    border-bottom: 1px solid var(--luxury-line);
+    font-size: 0.66rem;
+    grid-column: span 3;
+    padding-bottom: 0.65rem;
+    text-transform: uppercase;
+  }
+
+  .popular-pagination {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.62rem;
+    grid-template-columns: 3fr 6fr 3fr;
+    margin-top: clamp(4rem, 8vw, 8rem);
+    min-height: 5rem;
+    position: relative;
+    text-transform: uppercase;
+  }
+
+  .popular-pagination > div:first-child span,
+  .popular-pagination__next span {
+    color: var(--luxury-muted);
+  }
+
+  .popular-pagination__next {
+    text-align: right;
+  }
+
+  .popular-pagination__pages {
+    align-items: center;
+    display: flex;
+    gap: 0.45rem;
+    justify-content: center;
+  }
+
+  .popular-pagination__pages a,
+  .popular-pagination__pages span {
+    align-items: center;
+    display: inline-flex;
+    height: 2.75rem;
+    justify-content: center;
+    min-width: 2.75rem;
+  }
+
+  .popular-pagination__pages a[aria-current='page'] {
+    background: var(--luxury-ink);
+    color: var(--luxury-paper);
+  }
+
+  .popular-pagination > p {
+    bottom: -1.5rem;
+    color: var(--luxury-muted);
+    font-size: 0.52rem;
+    left: 50%;
+    position: absolute;
+    transform: translateX(-50%);
+  }
+
+  .popular-pagination a,
+  .popular-notice > a {
+    transition: opacity 200ms ease, transform 200ms ease;
+  }
+
+  .popular-pagination a:hover,
+  .popular-notice > a:hover {
+    opacity: 0.6;
+  }
+
+  .popular-pagination a:active,
+  .popular-notice > a:active {
+    transform: scale(0.98);
+  }
+
+  :global(html.motion-ready [data-reveal]) {
+    opacity: 0;
+    transform: translateY(1.4rem);
+    transition: opacity 850ms cubic-bezier(0.22, 1, 0.36, 1), transform 850ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-image-reveal] > *) {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 1000ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal].is-visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(html.motion-ready [data-image-reveal].is-visible > *) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (max-width: 1100px) {
+    .ranking-identity {
+      grid-column: 2 / span 4;
+    }
+
+    .ranking-artwork {
+      grid-column: 7 / span 3;
+    }
+
+    .ranking-specification {
+      grid-column: 10 / span 3;
+    }
+
+    .ranking-list svg {
+      display: none;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .popular-register {
+      grid-template-columns: 1fr auto;
+    }
+
+    .popular-register p:nth-child(2) {
+      display: none;
+    }
+
+    .popular-hero h1 {
+      font-size: clamp(3.4rem, 19vw, 6rem);
+      line-height: 0.77;
+      padding-bottom: 4.5rem;
+      padding-top: 4.5rem;
+    }
+
+    .popular-notes {
+      display: block;
+    }
+
+    .popular-notes > p {
+      margin-bottom: 2.5rem;
+    }
+
+    .popular-heading {
+      display: block;
+    }
+
+    .popular-heading > p {
+      margin-top: 1.4rem;
+      text-align: left;
+    }
+
+    .ranking-list a {
+      align-items: start;
+      grid-template-columns: 2.5rem repeat(3, minmax(0, 1fr));
+      padding: 2rem 0 2.5rem;
+    }
+
+    .ranking-number {
+      grid-column: 1;
+      justify-self: start;
+    }
+
+    .ranking-identity {
+      grid-column: 2 / -1;
+    }
+
+    .ranking-artwork {
+      grid-column: 1 / -1;
+      margin-top: 1.25rem;
+    }
+
+    .ranking-specification {
+      grid-column: 1 / -1;
+      grid-template-columns: repeat(3, 1fr);
+      margin-top: 0.75rem;
+    }
+
+    .ranking-specification div {
+      display: block;
+    }
+
+    .ranking-specification dd {
+      display: block;
+      margin-top: 0.45rem;
+    }
+
+    .popular-notice {
+      display: block;
+    }
+
+    .popular-notice > span {
+      display: block;
+      margin-bottom: 2rem;
+    }
+
+    .popular-notice > a {
+      display: block;
+      margin-top: 2rem;
+    }
+
+    .popular-pagination {
+      gap: 1rem;
+      grid-template-columns: 1fr 1fr;
+      padding: 1rem 0;
+    }
+
+    .popular-pagination__pages {
+      grid-column: 1 / -1;
+      grid-row: 2;
+      justify-content: flex-start;
+      overflow-x: auto;
+    }
+
+    .popular-pagination__next {
+      grid-column: 2;
+      grid-row: 1;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .popular-notes dl {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .popular-notes dl div {
+      min-height: 4.25rem;
+      padding: 0.55rem;
+    }
+
+    .ranking-specification {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-reveal]),
+    :global([data-image-reveal]),
+    :global([data-image-reveal] > *) {
+      clip-path: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

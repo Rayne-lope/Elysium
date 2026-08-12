@@ -1,0 +1,33 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import Layout from '@/layouts/Layout.astro';
+import PublicErrorPage from '@/components/public/PublicErrorPage.astro';
+
+interface Props {
+  error?: unknown;
+}
+
+Astro.response.status = 500;
+const originalPath = Astro.originPathname && Astro.originPathname !== '/500'
+  ? Astro.originPathname
+  : '/';
+---
+
+<Layout
+  title="Archive Interrupted | Elysium"
+  description="The Elysium archive encountered a temporary interruption."
+  activePage=""
+  surface="error-luxury"
+>
+  <PublicErrorPage
+    code="500"
+    register="System interruption"
+    title="Archive signal lost"
+    description="The archive could not complete this request. No action is required on your part."
+    detail="Internal details remain private. Please retry shortly."
+    primaryHref={originalPath}
+    primaryLabel="Retry request"
+    secondaryHref="/"
+    secondaryLabel="Return home"
+  />
+</Layout>

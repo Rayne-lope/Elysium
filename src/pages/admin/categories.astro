@@ -1,0 +1,99 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Category } from '@/types';
+
+const db = env.DB;
+
+let categories: Category[] = [];
+if (db) {
+  try {
+    categories = await DBService.getCategories(db);
+  } catch (e) {
+    console.error('Failed to load categories:', e);
+  }
+}
+---
+
+<AdminLayout title="Manage Categories | Admin" activeTab="categories">
+  <div style="max-width: 900px; margin: 0 auto;">
+    
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+      <div>
+        <h1 style="font-family: var(--font-heading); font-size: 2rem; font-weight: 800; margin-bottom: 0.25rem;">
+          Category Management
+        </h1>
+        <p style="color: var(--text-secondary); font-size: 0.95rem;">
+          Organize wallpapers into discoverable collections.
+        </p>
+      </div>
+    </div>
+
+    <!-- Create Category Card -->
+    <div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 1.5rem; margin-bottom: 2.5rem;">
+      <h2 style="font-family: var(--font-heading); font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem;">Create New Category</h2>
+      <form id="create-cat-form" style="display: grid; grid-template-columns: 1fr 2fr auto; gap: 1rem; align-items: end;">
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.4rem;">Category Name *</label>
+          <input type="text" id="cat-name" name="name" required placeholder="e.g. Cyberpunk" style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.4rem;">Description</label>
+          <input type="text" id="cat-desc" name="description" placeholder="Neon lit futuristic urban sceneries..." style="width: 100%; padding: 0.75rem; background: var(--bg-surface-elevated); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary);" />
+        </div>
+        <button type="submit" style="padding: 0.75rem 1.25rem; background: var(--accent-primary); color: #fff; border: none; border-radius: var(--radius-sm); font-weight: 600; cursor: pointer;">
+          + Add Category
+        </button>
+      </form>
+    </div>
+
+    <!-- Categories List Table -->
+    <div style="background: var(--bg-surface); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 1.5rem;">
+      <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;">
+        <thead>
+          <tr style="border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary);">
+            <th style="padding: 0.75rem 1rem;">Name</th>
+            <th style="padding: 0.75rem 1rem;">Slug</th>
+            <th style="padding: 0.75rem 1rem;">Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          {categories.map((cat) => (
+            <tr style="border-bottom: 1px solid var(--border-subtle);">
+              <td style="padding: 1rem; font-weight: 700;">{cat.name}</td>
+              <td style="padding: 1rem; color: var(--text-secondary); font-family: monospace;">{cat.slug}</td>
+              <td style="padding: 1rem; color: var(--text-muted);">{cat.description || '-'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+
+  <script>
+    const form = document.getElementById('create-cat-form') as HTMLFormElement;
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const nameInput = document.getElementById('cat-name') as HTMLInputElement;
+      const descInput = document.getElementById('cat-desc') as HTMLInputElement;
+
+      try {
+        const res = await fetch('/api/admin/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: nameInput.value, description: descInput.value }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+        if (res.ok && data.success) {
+          window.location.reload();
+        } else {
+          alert(data.error || 'Failed to create category');
+        }
+      } catch (err) {
+        alert('Network error creating category');
+      }
+    });
+  </script>
+</AdminLayout>

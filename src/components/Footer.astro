@@ -1,0 +1,308 @@
+---
+import type { PublicSurface } from '@/types';
+
+interface Props {
+  surface?: PublicSurface;
+}
+
+const { surface = 'default' } = Astro.props;
+const currentYear = new Date().getFullYear();
+const isLuxury = surface !== 'default';
+---
+
+{isLuxury ? (
+  <footer class="luxury-footer">
+    <div class="luxury-footer__grid">
+      <p class="luxury-footer__statement">
+        Art for the space<br />between moments.
+      </p>
+
+      <nav aria-label="Footer navigation">
+        <a href="/explore">Explore archive</a>
+        <a href="/popular">Most collected</a>
+        <a href="/categories">Categories</a>
+      </nav>
+
+      <div class="luxury-footer__formats">
+        <a href="/explore?orientation=landscape">Landscape</a>
+        <a href="/explore?orientation=portrait">Portrait</a>
+        <a href="/explore?orientation=square">Square</a>
+      </div>
+
+      <a class="luxury-footer__wordmark" href="/" aria-label="Elysium home">ELYSIUM</a>
+
+      <div class="luxury-footer__meta">
+        <p>© {currentYear} Elysium</p>
+        <p>Untouched masters</p>
+        <p>Astro + Cloudflare Edge</p>
+      </div>
+    </div>
+  </footer>
+) : (
+  <footer class="default-footer">
+    <div class="container">
+      <div class="default-footer__grid">
+        <div>
+          <a href="/" class="default-footer__brand">
+            ELYSIUM<span>.</span>
+          </a>
+          <p class="default-footer__description">
+            Pure high-resolution wallpaper platform. Fast lightweight preview browsing paired with untouched original master downloads.
+          </p>
+        </div>
+
+        <div>
+          <h4>Platform</h4>
+          <ul>
+            <li><a href="/explore">Explore All</a></li>
+            <li><a href="/popular">Popular Collection</a></li>
+            <li><a href="/categories">Categories</a></li>
+          </ul>
+        </div>
+
+        <div>
+          <h4>Orientations</h4>
+          <ul>
+            <li><a href="/explore?orientation=landscape">Desktop (Landscape)</a></li>
+            <li><a href="/explore?orientation=portrait">Mobile (Portrait)</a></li>
+            <li><a href="/explore?orientation=square">Square (1:1)</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="default-footer__meta">
+        <p>© {currentYear} Elysium Wallpaper Platform. All master files preserved.</p>
+        <p>Powered by Astro + Cloudflare Edge</p>
+      </div>
+    </div>
+  </footer>
+)}
+
+<style>
+  .default-footer {
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 6rem;
+    padding: 4rem 0 2rem;
+  }
+
+  .default-footer__grid {
+    display: grid;
+    gap: 3rem;
+    grid-template-columns: 2fr 1fr 1fr;
+    margin-bottom: 3.5rem;
+  }
+
+  .default-footer__brand {
+    color: var(--text-primary);
+    display: inline-block;
+    font-family: var(--font-heading);
+    font-size: 1.5rem;
+    font-weight: 800;
+    margin-bottom: 1rem;
+  }
+
+  .default-footer__brand span {
+    color: var(--accent-text);
+  }
+
+  .default-footer__description {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    line-height: 1.6;
+    max-width: 320px;
+  }
+
+  .default-footer h4 {
+    color: var(--text-primary);
+    font-family: var(--font-heading);
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+  }
+
+  .default-footer ul {
+    color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    font-size: 0.875rem;
+    gap: 0.75rem;
+    list-style: none;
+  }
+
+  .default-footer a {
+    transition: var(--transition-fast);
+  }
+
+  .default-footer__meta {
+    align-items: center;
+    border-top: 1px solid var(--border-subtle);
+    color: var(--text-muted);
+    display: flex;
+    font-size: 0.85rem;
+    justify-content: space-between;
+    padding-top: 2rem;
+  }
+
+  .luxury-footer {
+    background: var(--luxury-paper-deep);
+    border-top: 1px solid var(--luxury-line);
+    color: var(--luxury-ink);
+    margin-top: var(--luxury-space);
+  }
+
+  .luxury-footer__grid {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin: 0 auto;
+    max-width: 1800px;
+    padding: clamp(3rem, 6vw, 6rem) var(--luxury-gutter) 1.25rem;
+  }
+
+  .luxury-footer__statement {
+    font-size: clamp(1.6rem, 3vw, 3.25rem);
+    font-stretch: 112%;
+    font-weight: 500;
+    grid-column: 1 / span 6;
+    letter-spacing: -0.055em;
+    line-height: 1;
+  }
+
+  .luxury-footer nav,
+  .luxury-footer__formats {
+    align-items: flex-start;
+    display: flex;
+    flex-direction: column;
+    font-size: 0.75rem;
+    gap: 0.65rem;
+    padding-top: 0.3rem;
+  }
+
+  .luxury-footer nav {
+    grid-column: 8 / span 2;
+  }
+
+  .luxury-footer__formats {
+    grid-column: 11 / span 2;
+  }
+
+  .luxury-footer nav a,
+  .luxury-footer__formats a {
+    position: relative;
+  }
+
+  .luxury-footer nav a::after,
+  .luxury-footer__formats a::after {
+    background: currentColor;
+    bottom: -0.2rem;
+    content: '';
+    height: 1px;
+    left: 0;
+    position: absolute;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+    width: 100%;
+  }
+
+  .luxury-footer nav a:hover::after,
+  .luxury-footer__formats a:hover::after {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+
+  .luxury-footer__wordmark {
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    font-size: clamp(3.65rem, 15.7vw, 17rem);
+    font-stretch: 125%;
+    font-weight: 760;
+    grid-column: 1 / -1;
+    letter-spacing: -0.095em;
+    line-height: 0.87;
+    margin-top: clamp(4rem, 9vw, 9rem);
+    overflow: hidden;
+    padding: 0.08em 0 0.14em;
+    white-space: nowrap;
+  }
+
+  .luxury-footer__meta {
+    color: var(--luxury-muted);
+    display: grid;
+    font-size: 0.6rem;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.08em;
+    padding-top: 1.25rem;
+    text-transform: uppercase;
+  }
+
+  .luxury-footer__meta p:nth-child(2) {
+    text-align: center;
+  }
+
+  .luxury-footer__meta p:last-child {
+    text-align: right;
+  }
+
+  @media (max-width: 900px) {
+    .luxury-footer__grid {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .luxury-footer__statement {
+      grid-column: 1 / span 4;
+    }
+
+    .luxury-footer nav {
+      grid-column: 5 / span 2;
+    }
+
+    .luxury-footer__formats {
+      display: none;
+    }
+
+    .luxury-footer__wordmark,
+    .luxury-footer__meta {
+      grid-column: 1 / -1;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .default-footer__grid {
+      grid-template-columns: 1fr;
+    }
+
+    .default-footer__meta {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .luxury-footer__statement {
+      grid-column: 1 / -1;
+    }
+
+    .luxury-footer nav {
+      border-top: 1px solid var(--luxury-line);
+      grid-column: 1 / -1;
+      margin-top: 2.5rem;
+      padding-top: 1rem;
+    }
+
+    .luxury-footer__wordmark {
+      font-size: 18.2vw;
+      margin-top: 3.5rem;
+    }
+
+    .luxury-footer__meta {
+      gap: 0.65rem;
+      grid-template-columns: 1fr;
+    }
+
+    .luxury-footer__meta p:nth-child(2),
+    .luxury-footer__meta p:last-child {
+      text-align: left;
+    }
+  }
+</style>

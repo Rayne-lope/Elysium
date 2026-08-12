@@ -1,0 +1,117 @@
+---
+import '@/styles/global.css';
+
+interface Props {
+  title?: string;
+  activeTab?: 'dashboard' | 'wallpapers' | 'categories' | 'tags';
+}
+
+const {
+  title = 'Admin Panel | Elysium',
+  activeTab = 'dashboard'
+} = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>{title}</title>
+</head>
+<body style="background-color: var(--bg-primary); color: var(--text-primary); min-height: 100vh; display: flex; flex-direction: column;">
+  
+  <!-- Admin Navigation Topbar -->
+  <header style="background: var(--bg-surface); border-bottom: 1px solid var(--border-medium); position: sticky; top: 0; z-index: 50;">
+    <div class="container" style="display: flex; justify-content: space-between; align-items: center; height: 70px;">
+      
+      <div style="display: flex; align-items: center; gap: 2.5rem;">
+        <a href="/admin/dashboard" style="font-family: var(--font-heading); font-size: 1.35rem; font-weight: 800; letter-spacing: -0.02em; display: flex; align-items: center; gap: 0.5rem;">
+          ELYSIUM <span style="font-size: 0.75rem; padding: 0.2rem 0.5rem; background: var(--accent-glow); color: var(--accent-primary); border-radius: var(--radius-full); font-family: var(--font-main); font-weight: 700;">ADMIN</span>
+        </a>
+
+        <nav style="display: flex; gap: 0.5rem;">
+          <a
+            href="/admin/dashboard"
+            class={activeTab === 'dashboard' ? 'nav-link active' : 'nav-link'}
+          >
+            Dashboard
+          </a>
+          <a
+            href="/admin/wallpapers"
+            class={activeTab === 'wallpapers' ? 'nav-link active' : 'nav-link'}
+          >
+            Wallpapers
+          </a>
+          <a
+            href="/admin/categories"
+            class={activeTab === 'categories' ? 'nav-link active' : 'nav-link'}
+          >
+            Categories
+          </a>
+          <a
+            href="/admin/tags"
+            class={activeTab === 'tags' ? 'nav-link active' : 'nav-link'}
+          >
+            Tags
+          </a>
+        </nav>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 1rem;">
+        <a href="/" target="_blank" rel="noopener noreferrer" style="font-size: 0.85rem; color: var(--text-secondary); padding: 0.5rem 0.875rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); transition: var(--transition-fast);">
+          View Public Site &rarr;
+        </a>
+        <button id="logout-btn" style="font-size: 0.85rem; background: rgba(239, 68, 68, 0.1); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.2); padding: 0.5rem 0.875rem; border-radius: var(--radius-sm); cursor: pointer; transition: var(--transition-fast);">
+          Logout
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- Admin Main Body -->
+  <main style="flex: 1; padding: 2.5rem 0;">
+    <div class="container">
+      <slot />
+    </div>
+  </main>
+
+  <style>
+    .nav-link {
+      padding: 0.5rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      transition: var(--transition-fast);
+    }
+    .nav-link:hover {
+      color: var(--text-primary);
+      background: var(--bg-surface-elevated);
+    }
+    .nav-link.active {
+      color: var(--text-primary);
+      background: var(--accent-glow);
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+  </style>
+
+  <script>
+    const logoutBtn = document.getElementById('logout-btn');
+    logoutBtn?.addEventListener('click', async () => {
+      try {
+        const res = await fetch('/api/admin/logout', { method: 'POST' });
+        const data = (await res.json().catch(() => ({}))) as { success?: boolean; redirect?: string };
+        if (res.ok && data.success) {
+          window.location.href = data.redirect || '/admin/login';
+        }
+      } catch (err) {
+        console.error('Logout error:', err);
+      }
+    });
+  </script>
+</body>
+</html>

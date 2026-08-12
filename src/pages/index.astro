@@ -1,0 +1,334 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import 'lenis/dist/lenis.css';
+import { env } from 'cloudflare:workers';
+import Layout from '@/layouts/Layout.astro';
+import HeroFeatured from '@/components/public/HeroFeatured.astro';
+import CategoryPills from '@/components/public/CategoryPills.astro';
+import WallpaperCard from '@/components/public/WallpaperCard.astro';
+import PopularIndex from '@/components/public/PopularIndex.astro';
+import OrientationGrid from '@/components/public/OrientationGrid.astro';
+import { curateHomepageCollections } from '@/lib/homepage';
+import { DBService } from '@worker/services/db.service';
+import type { Wallpaper, Category } from '@/types';
+
+const db = env.DB;
+
+let featuredWallpaper: Wallpaper | null = null;
+let latestWallpapers: Wallpaper[] = [];
+let popularWallpapers: Wallpaper[] = [];
+let categories: Category[] = [];
+let databaseUnavailable = false;
+
+if (db) {
+  try {
+    const [categoryResult, featuredResult, latestResult, popularResult] = await Promise.all([
+      DBService.getCategories(db),
+      DBService.listWallpapers(db, {
+        status: 'published',
+        isFeatured: true,
+        limit: 1,
+      }),
+      DBService.listWallpapers(db, {
+        status: 'published',
+        limit: 16,
+        sortBy: 'newest',
+      }),
+      DBService.listWallpapers(db, {
+        status: 'published',
+        limit: 32,
+        sortBy: 'popular',
+      }),
+    ]);
+
+    categories = categoryResult;
+
+    const collections = curateHomepageCollections(
+      featuredResult.wallpapers,
+      latestResult.wallpapers,
+      popularResult.wallpapers,
+      { latestLimit: 8, popularLimit: 8 },
+    );
+
+    featuredWallpaper = collections.featured;
+    latestWallpapers = collections.latest;
+    popularWallpapers = collections.popular;
+  } catch (error) {
+    console.error('Failed to load homepage data from D1:', error);
+    databaseUnavailable = true;
+    Astro.response.status = 503;
+  }
+}
+---
+
+<Layout
+  title="Elysium | Curated High-Resolution Wallpaper Archive"
+  description="A considered archive of high-resolution wallpapers, preserved as untouched original master files."
+  activePage="home"
+  surface="home-luxury"
+>
+  {databaseUnavailable && (
+    <div class="home-status" role="alert">
+      <span>Archive status</span>
+      <p>The wallpaper catalog is temporarily unavailable. Please try again shortly.</p>
+    </div>
+  )}
+
+  <HeroFeatured wallpaper={featuredWallpaper} />
+
+  {categories.length > 0 && <CategoryPills categories={categories} />}
+
+  <section id="new-editions" class="new-editions" aria-labelledby="new-editions-title">
+    <div class="home-frame">
+      <header class="home-section-heading" data-reveal>
+        <div>
+          <p>Recently acquired</p>
+          <h2 id="new-editions-title">New Editions</h2>
+        </div>
+        <a href="/explore">View complete archive</a>
+      </header>
+
+      {latestWallpapers.length > 0 ? (
+        <div class="new-editions__grid">
+          {latestWallpapers.map((wallpaper, index) => (
+            <WallpaperCard wallpaper={wallpaper} appearance="editorial" index={index} />
+          ))}
+        </div>
+      ) : (
+        <div class="home-empty" data-reveal>
+          <p>No editions have been published yet.</p>
+          <a href="/explore">Visit the archive</a>
+        </div>
+      )}
+    </div>
+  </section>
+
+  {popularWallpapers.length > 0 && <PopularIndex wallpapers={popularWallpapers} />}
+
+  <OrientationGrid />
+</Layout>
+
+<script>
+  import Lenis from 'lenis';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal], [data-image-reveal]'));
+
+  if (!reducedMotion.matches) {
+    document.documentElement.classList.add('motion-ready');
+
+    const lenis = new Lenis({
+      anchors: { offset: -76 },
+      autoRaf: true,
+      duration: 1.2,
+      easing: (time: number) => Math.min(1, 1.001 - Math.pow(2, -10 * time)),
+      smoothWheel: true,
+      stopInertiaOnNavigate: true,
+      syncTouch: false,
+      respectReducedMotion: true,
+    });
+
+    const revealObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }, {
+          rootMargin: '0px 0px -10% 0px',
+          threshold: 0.12,
+        })
+      : null;
+
+    requestAnimationFrame(() => {
+      if (revealObserver) {
+        revealTargets.forEach((target) => revealObserver.observe(target));
+      } else {
+        revealTargets.forEach((target) => target.classList.add('is-visible'));
+      }
+    });
+
+    window.addEventListener('pagehide', () => {
+      revealObserver?.disconnect();
+      lenis.destroy();
+    }, { once: true });
+  }
+</script>
+
+<style>
+  .home-frame,
+  .home-status {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding-left: var(--luxury-gutter);
+    padding-right: var(--luxury-gutter);
+  }
+
+  .home-status {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.7rem;
+    grid-template-columns: 2fr 10fr;
+    padding-bottom: 0.85rem;
+    padding-top: 0.85rem;
+  }
+
+  .home-status span {
+    color: var(--luxury-muted);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .new-editions {
+    border-bottom: 1px solid var(--luxury-line);
+    padding: var(--luxury-space) 0;
+  }
+
+  .home-section-heading {
+    align-items: flex-end;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(2.5rem, 5vw, 5rem);
+  }
+
+  .home-section-heading > div {
+    grid-column: 1 / span 9;
+  }
+
+  .home-section-heading p {
+    color: var(--luxury-muted);
+    font-size: 0.58rem;
+    letter-spacing: 0.09em;
+    margin-bottom: 0.8rem;
+    text-transform: uppercase;
+  }
+
+  .home-section-heading h2 {
+    font-size: clamp(3rem, 7vw, 8rem);
+    font-stretch: 117%;
+    font-weight: 520;
+    letter-spacing: -0.075em;
+    line-height: 0.88;
+  }
+
+  .home-section-heading > a {
+    border-bottom: 1px solid var(--luxury-line);
+    font-size: 0.68rem;
+    grid-column: 11 / span 2;
+    padding: 0.65rem 0;
+    text-transform: uppercase;
+    transition: border-color 480ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .home-section-heading > a:hover {
+    border-color: var(--luxury-ink);
+  }
+
+  .home-section-heading > a:active,
+  .home-empty a:active {
+    transform: scale(0.985);
+  }
+
+  .new-editions__grid {
+    align-items: start;
+    display: grid;
+    gap: clamp(2.5rem, 5vw, 6rem) clamp(1rem, 2vw, 2rem);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  :global(.new-editions__grid .editorial-card[data-orientation='landscape']) {
+    grid-column: span 2;
+  }
+
+  .home-empty {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.75rem;
+    justify-content: space-between;
+    padding: 1rem 0;
+  }
+
+  .home-empty a {
+    text-decoration: underline;
+    text-underline-offset: 0.25em;
+    transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal]) {
+    opacity: 0;
+    transform: translateY(2rem);
+    transition: opacity 900ms cubic-bezier(0.22, 1, 0.36, 1), transform 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-image-reveal] > *) {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 1050ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal].is-visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(html.motion-ready [data-image-reveal].is-visible > *) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (max-width: 900px) {
+    .home-section-heading {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .home-section-heading > div {
+      grid-column: 1 / span 4;
+    }
+
+    .home-section-heading > a {
+      grid-column: 5 / span 2;
+    }
+
+    .new-editions__grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 640px) {
+    .home-status {
+      align-items: start;
+      gap: 0.5rem;
+      grid-template-columns: 1fr;
+    }
+
+    .home-section-heading {
+      display: block;
+    }
+
+    .home-section-heading > a {
+      display: block;
+      margin-top: 2rem;
+    }
+
+    .new-editions__grid {
+      grid-template-columns: 1fr;
+    }
+
+    :global(.new-editions__grid .editorial-card[data-orientation='landscape']) {
+      grid-column: auto;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-reveal]),
+    :global([data-image-reveal]),
+    :global([data-image-reveal] > *) {
+      clip-path: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

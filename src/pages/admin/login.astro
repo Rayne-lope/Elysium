@@ -1,0 +1,83 @@
+---
+import Layout from '@/layouts/Layout.astro';
+---
+
+<Layout title="Admin Login | Elysium Platform">
+  <div style="min-height: 80vh; display: flex; align-items: center; justify-content: center; padding: 2rem 1rem;">
+    <div style="width: 100%; max-width: 440px; background: var(--bg-surface-elevated); border: 1px solid var(--border-medium); border-radius: var(--radius-lg); padding: 2.5rem; box-shadow: 0 20px 40px rgba(0,0,0,0.5);">
+      
+      <div style="text-align: center; margin-bottom: 2rem;">
+        <h1 style="font-family: var(--font-heading); font-size: 1.75rem; font-weight: 700; margin-bottom: 0.5rem;">
+          Admin Control Center
+        </h1>
+        <p style="color: var(--text-secondary); font-size: 0.9rem;">
+          Enter administrator secret key to proceed.
+        </p>
+      </div>
+
+      <div id="error-alert" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #fca5a5; padding: 0.75rem 1rem; border-radius: var(--radius-sm); font-size: 0.875rem; margin-bottom: 1.5rem;">
+      </div>
+
+      <form id="login-form">
+        <div style="margin-bottom: 1.5rem;">
+          <label for="password" style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 0.5rem;">
+            Admin Password / Secret
+          </label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            required
+            placeholder="••••••••••••"
+            style="width: 100%; padding: 0.875rem 1rem; background: var(--bg-surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 1rem; outline: none; transition: var(--transition-fast);"
+          />
+        </div>
+
+        <button
+          type="submit"
+          id="submit-btn"
+          style="width: 100%; padding: 0.875rem; background: var(--accent-primary); color: #ffffff; border: none; border-radius: var(--radius-sm); font-weight: 600; font-size: 1rem; cursor: pointer; transition: var(--transition-fast);"
+        >
+          Authenticate & Login
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('login-form') as HTMLFormElement;
+    const passwordInput = document.getElementById('password') as HTMLInputElement;
+    const submitBtn = document.getElementById('submit-btn') as HTMLButtonElement;
+    const errorAlert = document.getElementById('error-alert') as HTMLDivElement;
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorAlert.style.display = 'none';
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Verifying...';
+
+      try {
+        const res = await fetch('/api/admin/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: passwordInput.value }),
+        });
+
+        const data = (await res.json().catch(() => ({}))) as { success?: boolean; redirect?: string; error?: string };
+
+        if (res.ok && data.success) {
+          window.location.href = data.redirect || '/admin/dashboard';
+        } else {
+          errorAlert.innerText = data.error || 'Authentication failed';
+          errorAlert.style.display = 'block';
+        }
+      } catch (err) {
+        errorAlert.innerText = 'Network error occurred. Please try again.';
+        errorAlert.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = 'Authenticate & Login';
+      }
+    });
+  </script>
+</Layout>

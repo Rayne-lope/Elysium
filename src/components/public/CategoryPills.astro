@@ -1,0 +1,207 @@
+---
+import type { Category } from '@/types';
+
+interface Props {
+  categories: Category[];
+}
+
+const { categories = [] } = Astro.props;
+---
+
+<section class="archive-index" aria-labelledby="archive-index-title">
+  <div class="archive-index__frame">
+    <header class="archive-index__header" data-reveal>
+      <div>
+        <p>Browse by subject</p>
+        <h2 id="archive-index-title">Archive Index</h2>
+      </div>
+      <a href="/categories">Complete index</a>
+    </header>
+
+    <ol class="archive-index__list">
+      {categories.map((category, index) => (
+        <li data-reveal>
+          <a href={`/category/${category.slug}`}>
+            <span class="archive-index__number">{String(index + 1).padStart(2, '0')}</span>
+            <span class="archive-index__name">{category.name}</span>
+            <span class="archive-index__description">{category.description || 'Curated master collection'}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 12h15M13 6l6 6-6 6"></path>
+            </svg>
+          </a>
+        </li>
+      ))}
+    </ol>
+  </div>
+</section>
+
+<style>
+  .archive-index {
+    border-bottom: 1px solid var(--luxury-line);
+    padding: var(--luxury-space) 0;
+  }
+
+  .archive-index__frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding: 0 var(--luxury-gutter);
+  }
+
+  .archive-index__header {
+    align-items: flex-end;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(2.5rem, 5vw, 5rem);
+  }
+
+  .archive-index__header > div {
+    grid-column: 1 / span 8;
+  }
+
+  .archive-index__header p {
+    color: var(--luxury-muted);
+    font-size: 0.58rem;
+    letter-spacing: 0.09em;
+    margin-bottom: 0.8rem;
+    text-transform: uppercase;
+  }
+
+  .archive-index h2 {
+    font-size: clamp(3rem, 7vw, 8rem);
+    font-stretch: 117%;
+    font-weight: 520;
+    letter-spacing: -0.075em;
+    line-height: 0.88;
+  }
+
+  .archive-index__header > a {
+    border-bottom: 1px solid var(--luxury-line);
+    font-size: 0.68rem;
+    grid-column: 11 / span 2;
+    padding: 0.65rem 0;
+    text-transform: uppercase;
+    transition: border-color 480ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .archive-index__header > a:hover {
+    border-color: var(--luxury-ink);
+  }
+
+  .archive-index__header > a:active,
+  .archive-index__list a:active {
+    transform: scale(0.99);
+  }
+
+  .archive-index__list {
+    border-top: 1px solid var(--luxury-line);
+    list-style: none;
+  }
+
+  .archive-index__list li {
+    border-bottom: 1px solid var(--luxury-line);
+  }
+
+  .archive-index__list a {
+    align-items: center;
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    min-height: clamp(4.75rem, 7vw, 7.5rem);
+    transition: background-color 620ms cubic-bezier(0.22, 1, 0.36, 1), transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .archive-index__list a:hover {
+    background: var(--luxury-paper-deep);
+  }
+
+  .archive-index__number {
+    color: var(--luxury-muted);
+    font-size: 0.6rem;
+    grid-column: 1 / span 1;
+  }
+
+  .archive-index__name {
+    font-size: clamp(1.6rem, 3.3vw, 3.75rem);
+    font-stretch: 112%;
+    font-weight: 500;
+    grid-column: 2 / span 5;
+    letter-spacing: -0.055em;
+  }
+
+  .archive-index__description {
+    color: var(--luxury-muted);
+    font-size: 0.7rem;
+    grid-column: 8 / span 3;
+    line-height: 1.4;
+  }
+
+  .archive-index__list svg {
+    fill: none;
+    grid-column: 12;
+    height: 18px;
+    justify-self: end;
+    stroke: currentColor;
+    stroke-width: 1.2;
+    transition: transform 620ms cubic-bezier(0.22, 1, 0.36, 1);
+    width: 18px;
+  }
+
+  .archive-index__list a:hover svg {
+    transform: translateX(-0.4rem);
+  }
+
+  @media (max-width: 900px) {
+    .archive-index__header,
+    .archive-index__list a {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .archive-index__header > div {
+      grid-column: 1 / span 4;
+    }
+
+    .archive-index__header > a {
+      grid-column: 5 / span 2;
+    }
+
+    .archive-index__number {
+      grid-column: 1;
+    }
+
+    .archive-index__name {
+      grid-column: 2 / span 3;
+    }
+
+    .archive-index__description {
+      display: none;
+    }
+
+    .archive-index__list svg {
+      grid-column: 6;
+    }
+  }
+
+  @media (max-width: 640px) {
+    .archive-index__header {
+      display: block;
+    }
+
+    .archive-index__header > a {
+      display: block;
+      margin-top: 2rem;
+    }
+
+    .archive-index__list a {
+      grid-template-columns: 2rem 1fr 1.5rem;
+    }
+
+    .archive-index__number,
+    .archive-index__name,
+    .archive-index__list svg {
+      grid-column: auto;
+    }
+
+    .archive-index__name {
+      font-size: 1.75rem;
+    }
+  }
+</style>

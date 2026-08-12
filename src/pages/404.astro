@@ -1,0 +1,27 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import Layout from '@/layouts/Layout.astro';
+import PublicErrorPage from '@/components/public/PublicErrorPage.astro';
+
+Astro.response.status = 404;
+const requestedPath = Astro.originPathname || Astro.url.pathname;
+---
+
+<Layout
+  title="Record Not Found | Elysium"
+  description="The requested Elysium archive record could not be found."
+  activePage=""
+  surface="error-luxury"
+>
+  <PublicErrorPage
+    code="404"
+    register="Record not found"
+    title="Outside the index"
+    description="The requested record is absent, unpublished, or has moved beyond this archive address."
+    detail={`Requested path: ${requestedPath}`}
+    primaryHref="/explore"
+    primaryLabel="Explore the archive"
+    secondaryHref="/"
+    secondaryLabel="Return home"
+  />
+</Layout>

@@ -1,0 +1,402 @@
+---
+import type { Category } from '@/types';
+
+interface Props {
+  categories: Category[];
+  currentCategory: string;
+  currentOrientation: string;
+  currentSort: string;
+  currentSearch: string;
+  currentTag: string;
+  requestSearch: string;
+  idPrefix: string;
+  action?: string;
+  showSearch?: boolean;
+  showCategory?: boolean;
+  showSort?: boolean;
+}
+
+const {
+  categories,
+  currentCategory,
+  currentOrientation,
+  currentSort,
+  currentSearch,
+  currentTag,
+  requestSearch,
+  idPrefix,
+  action = '/explore',
+  showSearch = true,
+  showCategory = true,
+  showSort = true,
+} = Astro.props;
+
+const currentLimit = new URLSearchParams(requestSearch).get('limit') || '';
+const orientations = [
+  { value: '', label: 'All formats' },
+  { value: 'landscape', label: 'Landscape' },
+  { value: 'portrait', label: 'Portrait' },
+  { value: 'square', label: 'Square' },
+];
+---
+
+<form
+  action={action}
+  method="GET"
+  class:list={['archive-fields', {
+    'is-compact': !showSearch && !showCategory,
+    'is-searchless': !showSearch && showCategory,
+    'is-sortless': !showSort,
+  }]}
+  data-archive-filter-form
+>
+  {currentTag && <input type="hidden" name="tag" value={currentTag} />}
+  {currentLimit && <input type="hidden" name="limit" value={currentLimit} />}
+  {!showSearch && currentSearch && <input type="hidden" name="q" value={currentSearch} />}
+
+  {showSearch && (
+    <div class="archive-field archive-field--search">
+      <label for={`${idPrefix}-search`}>Search archive</label>
+      <input
+        id={`${idPrefix}-search`}
+        type="search"
+        name="q"
+        value={currentSearch}
+        placeholder="Title or subject"
+        maxlength="100"
+      />
+    </div>
+  )}
+
+  <div
+    class="archive-field archive-field--orientation"
+    role="radiogroup"
+    aria-labelledby={`${idPrefix}-format-label`}
+  >
+    <span class="archive-field__label" id={`${idPrefix}-format-label`}>Format</span>
+    <div class="archive-orientation-options">
+      {orientations.map((orientation, index) => (
+        <div class="archive-orientation-option">
+          <input
+            id={`${idPrefix}-orientation-${orientation.value || 'all'}`}
+            type="radio"
+            name="orientation"
+            value={orientation.value}
+            checked={currentOrientation === orientation.value}
+          />
+          <label for={`${idPrefix}-orientation-${orientation.value || 'all'}`}>
+            <span>{String(index + 1).padStart(2, '0')}</span>
+            {orientation.label}
+          </label>
+        </div>
+      ))}
+    </div>
+  </div>
+
+  {showCategory && (
+    <div class="archive-field archive-field--select archive-field--category">
+      <label for={`${idPrefix}-category`}>Category</label>
+      <select id={`${idPrefix}-category`} name="category">
+        <option value="">All categories</option>
+        {categories.map((category) => (
+          <option value={category.slug} selected={category.slug === currentCategory}>{category.name}</option>
+        ))}
+      </select>
+    </div>
+  )}
+
+  {showSort && (
+    <div class="archive-field archive-field--select archive-field--sequence">
+      <label for={`${idPrefix}-sort`}>Sequence</label>
+      <select id={`${idPrefix}-sort`} name="sort">
+        <option value="newest" selected={currentSort === 'newest'}>Newest acquisitions</option>
+        <option value="popular" selected={currentSort === 'popular'}>Most collected</option>
+        <option value="featured" selected={currentSort === 'featured'}>Featured first</option>
+      </select>
+    </div>
+  )}
+
+  <button class="archive-apply" type="submit">
+    Apply query
+    <span aria-hidden="true">↗</span>
+  </button>
+</form>
+
+<style>
+  .archive-fields {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .archive-fields > * {
+    min-width: 0;
+  }
+
+  .archive-field {
+    border: 0;
+    margin: 0;
+    padding: 0.8rem clamp(0.7rem, 1.25vw, 1.25rem);
+  }
+
+  .archive-field--orientation,
+  .archive-field--select,
+  .archive-apply {
+    border-left: 1px solid var(--luxury-line);
+  }
+
+  .archive-field--search {
+    grid-column: span 3;
+    padding-left: 0;
+  }
+
+  .archive-field--orientation {
+    grid-column: span 4;
+  }
+
+  .archive-field--select {
+    grid-column: span 2;
+  }
+
+  .archive-fields.is-compact .archive-field--orientation {
+    grid-column: span 6;
+    padding-left: 0;
+  }
+
+  .archive-fields.is-searchless .archive-field--orientation {
+    border-left: 0;
+    grid-column: span 6;
+    padding-left: 0;
+  }
+
+  .archive-fields.is-searchless .archive-field--category,
+  .archive-fields.is-searchless .archive-field--sequence,
+  .archive-fields.is-searchless .archive-apply {
+    grid-column: span 2;
+  }
+
+  .archive-fields.is-searchless.is-sortless .archive-field--category,
+  .archive-fields.is-searchless.is-sortless .archive-apply {
+    grid-column: span 3;
+  }
+
+  .archive-fields.is-compact .archive-field--sequence,
+  .archive-fields.is-compact .archive-apply {
+    grid-column: span 3;
+  }
+
+  .archive-field--search > label,
+  .archive-field--select > label,
+  .archive-field__label {
+    color: var(--luxury-muted);
+    display: block;
+    font-size: 0.52rem;
+    letter-spacing: 0.09em;
+    line-height: 1;
+    margin-bottom: 0.55rem;
+    text-transform: uppercase;
+  }
+
+  .archive-field--search input,
+  .archive-field select {
+    background: transparent;
+    border: 0;
+    color: var(--luxury-ink);
+    font: inherit;
+    font-size: 0.72rem;
+    outline: 0;
+    padding: 0.15rem 0;
+    width: 100%;
+  }
+
+  .archive-field--search input::placeholder {
+    color: var(--luxury-muted);
+    opacity: 0.85;
+  }
+
+  .archive-field select {
+    cursor: pointer;
+  }
+
+  .archive-field--search input {
+    border-bottom: 1px solid var(--luxury-line);
+    padding-bottom: 0.35rem;
+  }
+
+  .archive-orientation-options {
+    align-items: center;
+    display: grid;
+    gap: clamp(0.45rem, 0.8vw, 0.9rem);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    min-height: 1.15rem;
+  }
+
+  .archive-orientation-option {
+    min-width: 0;
+    position: relative;
+  }
+
+  .archive-orientation-option input {
+    height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    position: absolute;
+    width: 1px;
+  }
+
+  .archive-orientation-option label {
+    cursor: pointer;
+    display: inline-block;
+    font-size: 0.62rem;
+    position: relative;
+    transition: opacity 200ms ease, transform 200ms ease;
+    white-space: nowrap;
+  }
+
+  .archive-orientation-option label span {
+    color: var(--luxury-muted);
+    font-size: 0.45rem;
+    margin-right: 0.3rem;
+  }
+
+  .archive-orientation-option label::after {
+    background: currentColor;
+    bottom: -0.35rem;
+    content: '';
+    height: 1px;
+    left: 0;
+    position: absolute;
+    transform: scaleX(0);
+    transform-origin: right;
+    transition: transform 380ms cubic-bezier(0.22, 1, 0.36, 1);
+    width: 100%;
+  }
+
+  .archive-orientation-option label:hover {
+    opacity: 0.65;
+  }
+
+  .archive-orientation-option input:checked + label::after {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+
+  .archive-orientation-option input:focus-visible + label {
+    outline: 2px solid var(--luxury-focus);
+    outline-offset: 4px;
+  }
+
+  .archive-orientation-option label:active {
+    transform: scale(0.98);
+  }
+
+  .archive-apply {
+    align-items: center;
+    background: var(--luxury-ink);
+    border-bottom: 0;
+    border-right: 0;
+    border-top: 0;
+    color: var(--luxury-paper);
+    cursor: pointer;
+    display: flex;
+    font: inherit;
+    font-size: 0.66rem;
+    grid-column: span 1;
+    justify-content: space-between;
+    padding: 0.8rem;
+    transition: background-color 220ms ease, transform 220ms ease;
+  }
+
+  .archive-apply:hover {
+    background: var(--luxury-muted);
+  }
+
+  .archive-apply:active {
+    transform: scale(0.98);
+  }
+
+  @media (max-width: 1100px) {
+    .archive-fields {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+
+    .archive-field--search,
+    .archive-field--orientation {
+      border-bottom: 1px solid var(--luxury-line);
+      grid-column: span 3;
+    }
+
+    .archive-field--orientation {
+      border-left: 1px solid var(--luxury-line);
+    }
+
+    .archive-field--select {
+      grid-column: span 2;
+    }
+
+    .archive-apply {
+      grid-column: span 2;
+    }
+
+    .archive-fields.is-compact .archive-field--orientation {
+      border-bottom: 0;
+      border-left: 0;
+      grid-column: span 3;
+    }
+
+    .archive-fields.is-compact .archive-field--sequence {
+      grid-column: span 2;
+    }
+
+    .archive-fields.is-compact .archive-apply {
+      grid-column: span 1;
+    }
+
+    .archive-fields.is-searchless .archive-field--orientation {
+      border-bottom: 1px solid var(--luxury-line);
+      grid-column: span 6;
+    }
+
+    .archive-fields.is-searchless .archive-field--category,
+    .archive-fields.is-searchless .archive-field--sequence,
+    .archive-fields.is-searchless .archive-apply {
+      grid-column: span 2;
+    }
+
+    .archive-fields.is-searchless.is-sortless .archive-field--category,
+    .archive-fields.is-searchless.is-sortless .archive-apply {
+      grid-column: span 3;
+    }
+
+    .archive-fields.is-searchless .archive-field--category {
+      border-left: 0;
+      padding-left: 0;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .archive-fields {
+      display: block;
+    }
+
+    .archive-field,
+    .archive-field--orientation,
+    .archive-apply {
+      border-bottom: 1px solid var(--luxury-line);
+      border-left: 0;
+      padding: 1rem 0;
+      width: 100%;
+    }
+
+    .archive-orientation-options {
+      align-items: flex-start;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      row-gap: 1rem;
+    }
+
+    .archive-apply {
+      padding-left: 0.85rem;
+      padding-right: 0.85rem;
+    }
+  }
+</style>

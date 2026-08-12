@@ -1,0 +1,142 @@
+/* Global Design System & CSS Tokens */
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  src: url('/fonts/plus-jakarta-sans-latin-v12.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 300 800;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Outfit';
+  src: url('/fonts/outfit-latin-v15.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+:root {
+  /* Color Palette - Dark Editorial Theme */
+  --bg-primary: #0a0c10;
+  --bg-surface: #12151c;
+  --bg-surface-elevated: #1a1e28;
+  --bg-glass: rgba(18, 21, 28, 0.75);
+  
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-medium: rgba(255, 255, 255, 0.16);
+
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-muted: #8a91a1;
+  
+  --accent-primary: #5b5fd6;
+  --accent-text: #818cf8;
+  --accent-hover: #4f46e5;
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  
+  /* Fonts */
+  --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Outfit', sans-serif;
+
+  /* Spacing */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body[data-surface='home-luxury'],
+body[data-surface='detail-luxury'],
+body[data-surface='explore-luxury'],
+body[data-surface='categories-luxury'],
+body[data-surface='search-luxury'],
+body[data-surface='tag-luxury'],
+body[data-surface='popular-luxury'],
+body[data-surface='error-luxury'] {
+  --luxury-paper: oklch(97.7% 0.005 78);
+  --luxury-paper-deep: oklch(94.8% 0.007 78);
+  --luxury-ink: oklch(17.8% 0.004 78);
+  --luxury-muted: oklch(46% 0.008 78);
+  --luxury-line: oklch(81.5% 0.008 78);
+  --luxury-focus: oklch(46% 0.07 70);
+  --luxury-font: 'Archivo Variable', Arial, sans-serif;
+  --luxury-gutter: clamp(1rem, 2.6vw, 2.75rem);
+  --luxury-space: clamp(5rem, 10vw, 10rem);
+  --preview-placeholder-bg: var(--luxury-paper-deep);
+
+  background: var(--luxury-paper);
+  color: var(--luxury-ink);
+  font-family: var(--luxury-font);
+}
+
+body[data-surface='home-luxury'] ::selection,
+body[data-surface='detail-luxury'] ::selection,
+body[data-surface='explore-luxury'] ::selection,
+body[data-surface='categories-luxury'] ::selection,
+body[data-surface='search-luxury'] ::selection,
+body[data-surface='tag-luxury'] ::selection,
+body[data-surface='popular-luxury'] ::selection,
+body[data-surface='error-luxury'] ::selection {
+  background: var(--luxury-ink);
+  color: var(--luxury-paper);
+}
+
+body[data-surface='home-luxury'] :focus-visible,
+body[data-surface='detail-luxury'] :focus-visible,
+body[data-surface='explore-luxury'] :focus-visible,
+body[data-surface='categories-luxury'] :focus-visible,
+body[data-surface='search-luxury'] :focus-visible,
+body[data-surface='tag-luxury'] :focus-visible,
+body[data-surface='popular-luxury'] :focus-visible,
+body[data-surface='error-luxury'] :focus-visible {
+  outline: 2px solid var(--luxury-focus);
+  outline-offset: 4px;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.container {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

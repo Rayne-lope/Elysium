@@ -1,0 +1,211 @@
+---
+interface Props {
+  code: '404' | '500';
+  register: string;
+  title: string;
+  description: string;
+  detail: string;
+  primaryHref: string;
+  primaryLabel: string;
+  secondaryHref: string;
+  secondaryLabel: string;
+}
+
+const {
+  code,
+  register,
+  title,
+  description,
+  detail,
+  primaryHref,
+  primaryLabel,
+  secondaryHref,
+  secondaryLabel,
+} = Astro.props;
+---
+
+<section class="error-page" aria-labelledby="error-title">
+  <div class="error-frame">
+    <div class="error-register">
+      <p>{register}</p>
+      <p>System note / {code}</p>
+      <p>Elysium archive</p>
+    </div>
+
+    <p class="error-code" aria-hidden="true">{code}</p>
+
+    <div class="error-content">
+      <div>
+        <p class="error-kicker">Archive interruption</p>
+        <h1 id="error-title">{title}</h1>
+      </div>
+
+      <div class="error-copy">
+        <p>{description}</p>
+        <span>{detail}</span>
+      </div>
+
+      <nav aria-label="Recovery options">
+        <a href={primaryHref}>{primaryLabel}<span aria-hidden="true">↗</span></a>
+        <a href={secondaryHref}>{secondaryLabel}<span aria-hidden="true">↗</span></a>
+        <a href="/search">Search the archive<span aria-hidden="true">↗</span></a>
+      </nav>
+    </div>
+  </div>
+</section>
+
+<style>
+  .error-page {
+    min-height: calc(100svh - 76px);
+    overflow: clip;
+  }
+
+  .error-frame {
+    display: flex;
+    flex-direction: column;
+    margin: 0 auto;
+    max-width: 1800px;
+    min-height: calc(100svh - 76px);
+    padding: 0 var(--luxury-gutter) clamp(3rem, 6vw, 6rem);
+  }
+
+  .error-register {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.56rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.08em;
+    padding: 1rem 0;
+    text-transform: uppercase;
+  }
+
+  .error-register p:nth-child(2) {
+    text-align: center;
+  }
+
+  .error-register p:last-child {
+    color: var(--luxury-muted);
+    text-align: right;
+  }
+
+  .error-code {
+    font-size: clamp(10rem, 31vw, 35rem);
+    font-stretch: 125%;
+    font-weight: 760;
+    letter-spacing: -0.11em;
+    line-height: 0.65;
+    margin-left: -0.045em;
+    padding: clamp(4rem, 9vw, 9rem) 0 clamp(5rem, 10vw, 10rem);
+    white-space: nowrap;
+  }
+
+  .error-content {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-top: auto;
+    padding: clamp(1.5rem, 3vw, 3rem) 0;
+  }
+
+  .error-content > div:first-child {
+    grid-column: 1 / span 5;
+  }
+
+  .error-kicker,
+  .error-copy span {
+    color: var(--luxury-muted);
+    font-size: 0.56rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .error-content h1 {
+    font-size: clamp(2.2rem, 4.7vw, 5.5rem);
+    font-stretch: 115%;
+    font-weight: 520;
+    letter-spacing: -0.07em;
+    line-height: 0.94;
+    margin-top: 0.8rem;
+    max-width: 10ch;
+  }
+
+  .error-copy {
+    grid-column: 7 / span 3;
+  }
+
+  .error-copy > p {
+    font-size: clamp(1rem, 1.35vw, 1.35rem);
+    letter-spacing: -0.025em;
+    line-height: 1.45;
+    margin-bottom: 2rem;
+    max-width: 34ch;
+  }
+
+  .error-copy span {
+    display: block;
+    overflow-wrap: anywhere;
+  }
+
+  .error-content nav {
+    border-top: 1px solid var(--luxury-line);
+    display: flex;
+    flex-direction: column;
+    grid-column: 10 / span 3;
+  }
+
+  .error-content nav a {
+    align-items: center;
+    border-bottom: 1px solid var(--luxury-line);
+    display: flex;
+    font-size: 0.66rem;
+    justify-content: space-between;
+    min-height: 2.85rem;
+    text-transform: uppercase;
+    transition: background-color 420ms cubic-bezier(0.22, 1, 0.36, 1), padding 420ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms ease;
+  }
+
+  .error-content nav a:hover {
+    background: var(--luxury-paper-deep);
+    padding-left: 0.55rem;
+    padding-right: 0.55rem;
+  }
+
+  .error-content nav a:active {
+    transform: scale(0.985);
+  }
+
+  @media (max-width: 760px) {
+    .error-page,
+    .error-frame {
+      min-height: calc(100svh - 68px);
+    }
+
+    .error-register {
+      grid-template-columns: 1fr auto;
+    }
+
+    .error-register p:nth-child(2) {
+      display: none;
+    }
+
+    .error-code {
+      font-size: clamp(9rem, 55vw, 16rem);
+      padding-bottom: 5rem;
+      padding-top: 5rem;
+    }
+
+    .error-content {
+      display: block;
+    }
+
+    .error-copy {
+      margin-top: 2.5rem;
+    }
+
+    .error-content nav {
+      margin-top: 3rem;
+    }
+  }
+</style>

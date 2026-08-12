@@ -1,0 +1,715 @@
+---
+import '@fontsource-variable/archivo/wdth.css';
+import 'lenis/dist/lenis.css';
+import { env } from 'cloudflare:workers';
+import Layout from '@/layouts/Layout.astro';
+import { responsivePreviewSources } from '@/lib/preview-assets';
+import { DBService, type CategoryIndexRecord } from '@worker/services/db.service';
+
+const db = env.DB;
+
+let categoryRecords: CategoryIndexRecord[] = [];
+let databaseUnavailable = false;
+
+if (db) {
+  try {
+    categoryRecords = await DBService.getCategoryIndexRecords(db);
+  } catch (error) {
+    console.error('Failed to load categories overview:', error);
+    databaseUnavailable = true;
+    Astro.response.status = 503;
+  }
+}
+
+const atlasRecords = categoryRecords.map((record) => ({
+  ...record,
+  preview: record.cover ? responsivePreviewSources(record.cover, env.CDN_BASE_URL) : null,
+}));
+const firstPreviewRecord = atlasRecords.find((record) => record.cover && record.preview) || null;
+const activeCategoryCount = categoryRecords.filter((record) => record.count > 0).length;
+const totalPublishedRecords = categoryRecords.reduce((total, record) => total + record.count, 0);
+---
+
+<Layout
+  title="Wallpaper Categories and Curated Collections | Elysium"
+  description="Browse the Elysium taxonomy of curated high-resolution wallpaper collections."
+  activePage="categories"
+  surface="categories-luxury"
+>
+  <section class="taxonomy-hero" aria-labelledby="taxonomy-title">
+    <div class="taxonomy-frame">
+      <div class="taxonomy-hero__register" data-reveal>
+        <p>Archive taxonomy</p>
+        <p>Index / {String(categoryRecords.length).padStart(3, '0')}</p>
+        <p>Alphabetical classification</p>
+      </div>
+
+      <h1 id="taxonomy-title" data-reveal>CATEGORIES</h1>
+
+      <div class="taxonomy-hero__notes" data-reveal>
+        <p>
+          A subject-led map of the Elysium archive, arranged as a living index of visual disciplines.
+        </p>
+
+        <dl>
+          <div>
+            <dt>Taxonomies</dt>
+            <dd>{String(categoryRecords.length).padStart(2, '0')}</dd>
+          </div>
+          <div>
+            <dt>Active</dt>
+            <dd>{String(activeCategoryCount).padStart(2, '0')}</dd>
+          </div>
+          <div>
+            <dt>Published</dt>
+            <dd>{String(totalPublishedRecords).padStart(3, '0')}</dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <section class="taxonomy-atlas taxonomy-frame" aria-labelledby="atlas-title">
+    <header class="taxonomy-heading" data-reveal>
+      <div>
+        <p>01 / Subject classification</p>
+        <h2 id="atlas-title">Taxonomy Atlas</h2>
+      </div>
+      <p>{activeCategoryCount} active / {categoryRecords.length - activeCategoryCount} awaiting</p>
+    </header>
+
+    {databaseUnavailable ? (
+      <div class="taxonomy-notice" role="alert" data-reveal>
+        <span>Service note / 503</span>
+        <div>
+          <h2>Taxonomy unavailable</h2>
+          <p>The category index could not be reached. Please try again shortly.</p>
+        </div>
+        <a href="/categories">Retry request</a>
+      </div>
+    ) : atlasRecords.length === 0 ? (
+      <div class="taxonomy-notice" data-reveal>
+        <span>Index state / 000</span>
+        <div>
+          <h2>No classifications</h2>
+          <p>The archive taxonomy has not been established yet.</p>
+        </div>
+      </div>
+    ) : (
+      <div class="taxonomy-atlas__layout">
+        <ol class="taxonomy-list" aria-label="Wallpaper categories">
+          {atlasRecords.map((record, index) => record.count > 0 ? (
+            <li data-reveal>
+              <a
+                href={`/category/${record.category.slug}`}
+                class:list={{ 'is-previewed': record.category.slug === firstPreviewRecord?.category.slug }}
+                data-category-preview-trigger
+                data-preview-key={record.category.slug}
+                data-preview-fallback={record.preview?.fallbackUrl}
+                data-preview-avif={record.preview?.avifSrcSet}
+                data-preview-webp={record.preview?.webpSrcSet}
+                data-preview-width={record.cover?.width}
+                data-preview-height={record.cover?.height}
+                data-preview-category={record.category.name}
+                data-preview-title={record.cover?.title}
+                data-preview-count={record.count}
+              >
+                <span class="taxonomy-list__number">{String(index + 1).padStart(2, '0')}</span>
+                <div class="taxonomy-list__identity">
+                  <h3>{record.category.name}</h3>
+                  <p>{record.category.description || `Curated high-resolution studies in ${record.category.name}.`}</p>
+                </div>
+                <div class="taxonomy-list__status">
+                  <span>{String(record.count).padStart(3, '0')} records</span>
+                  <span>Open collection ↗</span>
+                </div>
+              </a>
+            </li>
+          ) : (
+            <li data-reveal>
+              <div class="taxonomy-list__row is-empty">
+                <span class="taxonomy-list__number">{String(index + 1).padStart(2, '0')}</span>
+                <div class="taxonomy-list__identity">
+                  <h3>{record.category.name}</h3>
+                  <p>{record.category.description || `Future classification for ${record.category.name}.`}</p>
+                </div>
+                <div class="taxonomy-list__status">
+                  <span>000 records</span>
+                  <span>Awaiting acquisition</span>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ol>
+
+        <aside class="taxonomy-preview" aria-live="polite" data-reveal>
+          <div class="taxonomy-preview__stage" data-category-preview-stage>
+            {firstPreviewRecord?.cover && firstPreviewRecord.preview ? (
+              <div class="taxonomy-preview__artwork" data-image-reveal>
+                <picture data-category-preview-picture data-responsive-wallpaper>
+                  <source
+                    data-category-preview-avif
+                    type="image/avif"
+                    srcset={firstPreviewRecord.preview.avifSrcSet}
+                    sizes="(max-width: 760px) calc(100vw - 2rem), min(38vw, 680px)"
+                  />
+                  <source
+                    data-category-preview-webp
+                    type="image/webp"
+                    srcset={firstPreviewRecord.preview.webpSrcSet}
+                    sizes="(max-width: 760px) calc(100vw - 2rem), min(38vw, 680px)"
+                  />
+                  <img
+                    src={firstPreviewRecord.preview.fallbackUrl}
+                    srcset={firstPreviewRecord.preview.webpSrcSet}
+                    sizes="(max-width: 760px) calc(100vw - 2rem), min(38vw, 680px)"
+                    width={firstPreviewRecord.cover.width}
+                    height={firstPreviewRecord.cover.height}
+                    alt={`${firstPreviewRecord.category.name} category preview, ${firstPreviewRecord.cover.title}`}
+                    loading="eager"
+                    decoding="async"
+                    fetchpriority="high"
+                    data-category-preview-image
+                  />
+                </picture>
+              </div>
+            ) : (
+              <div class="taxonomy-preview__placeholder" role="img" aria-label="Category preview unavailable">
+                Preview awaiting acquisition
+              </div>
+            )}
+          </div>
+
+          <div class="taxonomy-preview__caption">
+            <span data-category-preview-name>{firstPreviewRecord?.category.name || 'Archive taxonomy'}</span>
+            <span data-category-preview-title>{firstPreviewRecord?.cover?.title || 'No preview record'}</span>
+            <span data-category-preview-count>{String(firstPreviewRecord?.count || 0).padStart(3, '0')} records</span>
+          </div>
+        </aside>
+      </div>
+    )}
+  </section>
+</Layout>
+
+<script>
+  import Lenis from 'lenis';
+
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const desktopPreview = window.matchMedia('(min-width: 761px)');
+  const revealTargets = Array.from(document.querySelectorAll<HTMLElement>('[data-reveal], [data-image-reveal]'));
+  const previewStage = document.querySelector<HTMLElement>('[data-category-preview-stage]');
+  const previewImage = document.querySelector<HTMLImageElement>('[data-category-preview-image]');
+  const previewAvif = document.querySelector<HTMLSourceElement>('[data-category-preview-avif]');
+  const previewWebp = document.querySelector<HTMLSourceElement>('[data-category-preview-webp]');
+  const previewName = document.querySelector<HTMLElement>('[data-category-preview-name]');
+  const previewTitle = document.querySelector<HTMLElement>('[data-category-preview-title]');
+  const previewCount = document.querySelector<HTMLElement>('[data-category-preview-count]');
+  let previewRequest = 0;
+
+  function setSource(source: HTMLSourceElement | null, value?: string) {
+    if (!source) return;
+    if (value) source.setAttribute('srcset', value);
+    else source.removeAttribute('srcset');
+  }
+
+  function activatePreview(trigger: HTMLElement) {
+    if (!desktopPreview.matches || !previewImage || !previewStage) return;
+    const fallback = trigger.dataset.previewFallback;
+    const key = trigger.dataset.previewKey;
+    if (!fallback || !key || previewStage.dataset.currentPreview === key) return;
+
+    const request = ++previewRequest;
+    const preload = new Image();
+    preload.src = fallback;
+    preload.addEventListener('load', () => {
+      if (request !== previewRequest) return;
+      previewStage.classList.add('is-switching');
+
+      window.setTimeout(() => {
+        if (request !== previewRequest) return;
+        setSource(previewAvif, trigger.dataset.previewAvif);
+        setSource(previewWebp, trigger.dataset.previewWebp);
+        previewImage.src = fallback;
+        previewImage.srcset = trigger.dataset.previewWebp || '';
+        previewImage.width = Number(trigger.dataset.previewWidth) || previewImage.width;
+        previewImage.height = Number(trigger.dataset.previewHeight) || previewImage.height;
+        previewImage.alt = `${trigger.dataset.previewCategory || 'Category'} category preview, ${trigger.dataset.previewTitle || 'selected artwork'}`;
+        if (previewName) previewName.textContent = trigger.dataset.previewCategory || '';
+        if (previewTitle) previewTitle.textContent = trigger.dataset.previewTitle || '';
+        if (previewCount) previewCount.textContent = `${String(trigger.dataset.previewCount || '0').padStart(3, '0')} records`;
+        previewStage.dataset.currentPreview = key;
+
+        for (const row of document.querySelectorAll('[data-category-preview-trigger]')) {
+          row.classList.toggle('is-previewed', row === trigger);
+        }
+
+        requestAnimationFrame(() => previewStage.classList.remove('is-switching'));
+      }, reducedMotion.matches ? 0 : 130);
+    }, { once: true });
+  }
+
+  const initialTrigger = document.querySelector<HTMLElement>('[data-category-preview-trigger].is-previewed');
+  if (initialTrigger && previewStage) previewStage.dataset.currentPreview = initialTrigger.dataset.previewKey;
+
+  for (const trigger of document.querySelectorAll<HTMLElement>('[data-category-preview-trigger]')) {
+    trigger.addEventListener('pointerenter', () => activatePreview(trigger));
+    trigger.addEventListener('focusin', () => activatePreview(trigger));
+  }
+
+  if (!reducedMotion.matches) {
+    document.documentElement.classList.add('motion-ready');
+
+    const lenis = new Lenis({
+      anchors: { offset: -76 },
+      autoRaf: true,
+      duration: 1.1,
+      easing: (time: number) => Math.min(1, 1.001 - Math.pow(2, -10 * time)),
+      smoothWheel: true,
+      stopInertiaOnNavigate: true,
+      syncTouch: false,
+      respectReducedMotion: true,
+    });
+
+    const revealObserver = 'IntersectionObserver' in window
+      ? new IntersectionObserver((entries, observer) => {
+          for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            entry.target.classList.add('is-visible');
+            observer.unobserve(entry.target);
+          }
+        }, { rootMargin: '0px 0px -8% 0px', threshold: 0.08 })
+      : null;
+
+    requestAnimationFrame(() => {
+      if (revealObserver) revealTargets.forEach((target) => revealObserver.observe(target));
+      else revealTargets.forEach((target) => target.classList.add('is-visible'));
+    });
+
+    window.addEventListener('pagehide', () => {
+      revealObserver?.disconnect();
+      lenis.destroy();
+    }, { once: true });
+  }
+</script>
+
+<style>
+  .taxonomy-frame {
+    margin: 0 auto;
+    max-width: 1800px;
+    padding-left: var(--luxury-gutter);
+    padding-right: var(--luxury-gutter);
+  }
+
+  .taxonomy-hero {
+    overflow: clip;
+  }
+
+  .taxonomy-hero__register {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    font-size: 0.56rem;
+    grid-template-columns: repeat(3, 1fr);
+    letter-spacing: 0.08em;
+    padding: 1rem 0;
+    text-transform: uppercase;
+  }
+
+  .taxonomy-hero__register p:nth-child(2) {
+    text-align: center;
+  }
+
+  .taxonomy-hero__register p:last-child {
+    color: var(--luxury-muted);
+    text-align: right;
+  }
+
+  .taxonomy-hero h1 {
+    font-size: clamp(3.5rem, 12.7vw, 13.75rem);
+    font-stretch: 125%;
+    font-weight: 740;
+    letter-spacing: -0.09em;
+    line-height: 0.77;
+    padding: clamp(4rem, 8vw, 8rem) 0 clamp(3rem, 6vw, 6rem);
+    white-space: nowrap;
+  }
+
+  .taxonomy-hero__notes {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding-bottom: clamp(4rem, 8vw, 8rem);
+  }
+
+  .taxonomy-hero__notes > p {
+    font-size: clamp(1.05rem, 1.55vw, 1.5rem);
+    font-stretch: 106%;
+    font-weight: 430;
+    grid-column: 1 / span 5;
+    letter-spacing: -0.025em;
+    line-height: 1.45;
+    max-width: 32rem;
+  }
+
+  .taxonomy-hero__notes dl {
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-column: 8 / -1;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .taxonomy-hero__notes dl div {
+    padding: 0.75rem 0 0;
+  }
+
+  .taxonomy-hero__notes dl div:not(:first-child) {
+    border-left: 1px solid var(--luxury-line);
+    padding-left: 0.75rem;
+  }
+
+  .taxonomy-hero__notes dt,
+  .taxonomy-heading p,
+  .taxonomy-preview__caption,
+  .taxonomy-list__number,
+  .taxonomy-list__status {
+    color: var(--luxury-muted);
+    font-size: 0.54rem;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+
+  .taxonomy-hero__notes dd {
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    margin: 1rem 0 0;
+  }
+
+  .taxonomy-atlas {
+    border-top: 1px solid var(--luxury-line);
+    padding-bottom: var(--luxury-space);
+    padding-top: var(--luxury-space);
+  }
+
+  .taxonomy-heading {
+    align-items: end;
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    margin-bottom: clamp(3.5rem, 7vw, 7rem);
+    padding-bottom: 1rem;
+  }
+
+  .taxonomy-heading > div {
+    grid-column: 1 / span 9;
+  }
+
+  .taxonomy-heading h2 {
+    font-size: clamp(2.6rem, 6vw, 6.75rem);
+    font-stretch: 120%;
+    font-weight: 620;
+    letter-spacing: -0.075em;
+    line-height: 0.88;
+    margin-top: 1.5rem;
+  }
+
+  .taxonomy-heading > p {
+    grid-column: 10 / -1;
+    text-align: right;
+  }
+
+  .taxonomy-atlas__layout {
+    display: grid;
+    gap: clamp(2rem, 4vw, 5rem);
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .taxonomy-list {
+    border-top: 1px solid var(--luxury-line);
+    grid-column: 1 / span 7;
+    list-style: none;
+  }
+
+  .taxonomy-list li {
+    border-bottom: 1px solid var(--luxury-line);
+  }
+
+  .taxonomy-list a,
+  .taxonomy-list__row {
+    align-items: center;
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: 2.5rem minmax(0, 1fr) minmax(7rem, 0.34fr);
+    min-height: clamp(7rem, 10vw, 10rem);
+    padding: 1rem 0;
+  }
+
+  .taxonomy-list a {
+    transition: background-color 400ms ease, padding 400ms cubic-bezier(0.22, 1, 0.36, 1), transform 200ms ease;
+  }
+
+  .taxonomy-list a:hover,
+  .taxonomy-list a.is-previewed {
+    background: var(--luxury-paper-deep);
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  .taxonomy-list a:active {
+    transform: scale(0.99);
+  }
+
+  .taxonomy-list__identity h3 {
+    font-size: clamp(1.7rem, 3.5vw, 4rem);
+    font-stretch: 114%;
+    font-weight: 520;
+    letter-spacing: -0.065em;
+    line-height: 0.92;
+  }
+
+  .taxonomy-list__identity p {
+    color: var(--luxury-muted);
+    font-size: 0.66rem;
+    line-height: 1.45;
+    margin-top: 0.75rem;
+    max-width: 34rem;
+  }
+
+  .taxonomy-list__status {
+    display: grid;
+    gap: 0.65rem;
+    justify-items: end;
+    text-align: right;
+  }
+
+  .taxonomy-list__row.is-empty {
+    color: var(--luxury-muted);
+  }
+
+  .taxonomy-preview {
+    align-self: start;
+    grid-column: 8 / -1;
+    position: sticky;
+    top: calc(76px + 2rem);
+  }
+
+  .taxonomy-preview__stage {
+    align-items: center;
+    background: var(--luxury-paper-deep);
+    display: flex;
+    height: min(68vh, 760px);
+    justify-content: center;
+    min-height: 28rem;
+    overflow: hidden;
+    transition: opacity 180ms ease;
+  }
+
+  .taxonomy-preview__stage.is-switching {
+    opacity: 0.18;
+  }
+
+  .taxonomy-preview__artwork,
+  .taxonomy-preview__artwork picture {
+    display: block;
+    height: 100%;
+    width: 100%;
+  }
+
+  .taxonomy-preview__artwork img {
+    height: 100%;
+    object-fit: contain;
+    width: 100%;
+  }
+
+  .taxonomy-preview__placeholder {
+    color: var(--luxury-muted);
+    font-size: 0.58rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .taxonomy-preview__caption {
+    border-bottom: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    padding: 0.8rem 0 1rem;
+  }
+
+  .taxonomy-preview__caption span:nth-child(2) {
+    text-align: center;
+  }
+
+  .taxonomy-preview__caption span:last-child {
+    text-align: right;
+  }
+
+  .taxonomy-notice {
+    align-items: start;
+    border-bottom: 1px solid var(--luxury-line);
+    border-top: 1px solid var(--luxury-line);
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    padding: clamp(2rem, 4vw, 4rem) 0;
+  }
+
+  .taxonomy-notice > span {
+    color: var(--luxury-muted);
+    font-size: 0.54rem;
+    grid-column: 1 / span 3;
+    text-transform: uppercase;
+  }
+
+  .taxonomy-notice > div {
+    grid-column: 4 / span 6;
+  }
+
+  .taxonomy-notice h2 {
+    font-size: clamp(2.75rem, 7vw, 8rem);
+    font-stretch: 120%;
+    font-weight: 620;
+    letter-spacing: -0.075em;
+    line-height: 0.86;
+    text-transform: uppercase;
+  }
+
+  .taxonomy-notice p {
+    color: var(--luxury-muted);
+    font-size: 0.8rem;
+    line-height: 1.55;
+    margin-top: 1.5rem;
+  }
+
+  .taxonomy-notice > a {
+    border-bottom: 1px solid currentColor;
+    font-size: 0.65rem;
+    grid-column: 10 / -1;
+    padding-bottom: 0.4rem;
+  }
+
+  :global(html.motion-ready [data-reveal]) {
+    opacity: 0;
+    transform: translateY(1.5rem);
+    transition: opacity 750ms cubic-bezier(0.22, 1, 0.36, 1), transform 750ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-image-reveal] > *) {
+    clip-path: inset(0 0 100% 0);
+    transition: clip-path 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(html.motion-ready [data-reveal].is-visible) {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  :global(html.motion-ready [data-image-reveal].is-visible > *) {
+    clip-path: inset(0 0 0 0);
+  }
+
+  @media (max-width: 960px) {
+    .taxonomy-list {
+      grid-column: 1 / span 7;
+    }
+
+    .taxonomy-preview {
+      grid-column: 8 / -1;
+      top: calc(68px + 1.5rem);
+    }
+
+    .taxonomy-list a,
+    .taxonomy-list__row {
+      grid-template-columns: 2rem minmax(0, 1fr);
+    }
+
+    .taxonomy-list__status {
+      grid-column: 2;
+      justify-items: start;
+      text-align: left;
+    }
+  }
+
+  @media (max-width: 760px) {
+    .taxonomy-hero__register {
+      gap: 0.45rem;
+      grid-template-columns: 1fr;
+    }
+
+    .taxonomy-hero__register p:nth-child(2),
+    .taxonomy-hero__register p:last-child {
+      text-align: left;
+    }
+
+    .taxonomy-hero h1 {
+      font-size: 16.4vw;
+      line-height: 0.82;
+      padding: 4.5rem 0 3.5rem;
+    }
+
+    .taxonomy-hero__notes {
+      display: block;
+      padding-bottom: 4.5rem;
+    }
+
+    .taxonomy-hero__notes dl {
+      margin-top: 3rem;
+    }
+
+    .taxonomy-atlas {
+      padding-bottom: 5.5rem;
+      padding-top: 5.5rem;
+    }
+
+    .taxonomy-heading {
+      display: block;
+      margin-bottom: 4rem;
+    }
+
+    .taxonomy-heading > p {
+      margin-top: 1.5rem;
+      text-align: left;
+    }
+
+    .taxonomy-atlas__layout {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .taxonomy-preview {
+      order: -1;
+      position: static;
+    }
+
+    .taxonomy-preview__stage {
+      height: min(72vh, 620px);
+      min-height: 22rem;
+    }
+
+    .taxonomy-list a,
+    .taxonomy-list__row {
+      min-height: 8rem;
+    }
+
+    .taxonomy-list a:hover,
+    .taxonomy-list a.is-previewed {
+      padding-left: 0;
+      padding-right: 0;
+    }
+
+    .taxonomy-notice {
+      display: block;
+    }
+
+    .taxonomy-notice > div,
+    .taxonomy-notice > a {
+      display: block;
+      margin-top: 3rem;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global([data-reveal]),
+    :global([data-image-reveal]),
+    :global([data-image-reveal] > *) {
+      clip-path: none !important;
+      opacity: 1 !important;
+      transform: none !important;
+    }
+  }
+</style>

@@ -1,0 +1,454 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { DBService } from '@worker/services/db.service';
+import '@/styles/admin-pixabay.css';
+
+const db = env.DB;
+const categories = db ? await DBService.getCategories(db).catch(() => []) : [];
+---
+
+<AdminLayout title="Import from Pixabay | Admin" activeTab="wallpapers">
+  <div class="pixabay-page">
+    <header class="pixabay-heading">
+      <div>
+        <h1>Import from Pixabay</h1>
+        <p>Search, select, and bring curated assets into Elysium as review-ready drafts.</p>
+      </div>
+      <span class="pixabay-attribution">Discovery images provided by <a href="https://pixabay.com/" target="_blank" rel="noopener noreferrer">Pixabay</a></span>
+    </header>
+
+    <section id="search-section" class="pixabay-panel" aria-labelledby="search-heading">
+      <div class="pixabay-section-head">
+        <div>
+          <h2 id="search-heading">Search</h2>
+          <p>Use focused queries. This workflow is for curated imports, not catalog crawling.</p>
+        </div>
+      </div>
+      <form id="search-form">
+        <div class="pixabay-search-row">
+          <input id="query" class="pixabay-input" name="q" maxlength="100" placeholder="Dark mountain" aria-label="Search Pixabay" />
+          <button class="pixabay-button primary" type="submit">Search</button>
+        </div>
+        <div class="pixabay-filters">
+          <div class="pixabay-field">
+            <label for="orientation">Orientation</label>
+            <select id="orientation" class="pixabay-select" name="orientation">
+              <option value="all">All</option>
+              <option value="horizontal">Landscape</option>
+              <option value="vertical">Portrait</option>
+            </select>
+          </div>
+          <div class="pixabay-field">
+            <label for="resolution">Minimum resolution</label>
+            <select id="resolution" class="pixabay-select" name="resolution">
+              <option value="0,0">Any</option>
+              <option value="1920,1080">Full HD</option>
+              <option value="2560,1440">QHD</option>
+              <option value="3840,2160" selected>4K</option>
+              <option value="5120,2880">5K</option>
+            </select>
+          </div>
+          <div class="pixabay-field">
+            <label for="order">Sort</label>
+            <select id="order" class="pixabay-select" name="order">
+              <option value="popular">Popular</option>
+              <option value="latest">Latest</option>
+            </select>
+          </div>
+          <div class="pixabay-field">
+            <label for="category">Category</label>
+            <select id="category" class="pixabay-select" name="category">
+              <option value="">All categories</option>
+              {['backgrounds', 'nature', 'places', 'animals', 'travel', 'buildings', 'people', 'computer', 'food', 'sports', 'transportation'].map((category) => (
+                <option value={category}>{category[0].toUpperCase() + category.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </form>
+
+      <div id="results-heading" class="pixabay-section-head" style="margin-top: 1.5rem;" hidden>
+        <p id="results-count"></p>
+      </div>
+      <div id="results" class="pixabay-results" aria-live="polite">
+        <div class="pixabay-empty" style="grid-column: 1 / -1;">Search Pixabay to discover importable wallpaper assets.</div>
+      </div>
+      <div id="pagination" class="pixabay-pagination" style="margin-top: 1.25rem;" hidden>
+        <button id="previous-page" class="pixabay-button" type="button">Previous</button>
+        <span id="page-label" class="pixabay-note"></span>
+        <button id="next-page" class="pixabay-button" type="button">Next</button>
+      </div>
+    </section>
+
+    <div id="selection-bar" class="pixabay-selection" hidden>
+      <strong id="selection-count">Selected: 0 wallpapers</strong>
+      <div class="pixabay-actions">
+        <button id="clear-selection" class="pixabay-button" type="button">Clear selection</button>
+        <button id="review-selection" class="pixabay-button primary" type="button" disabled>Review import</button>
+      </div>
+    </div>
+
+    <section id="review-section" class="pixabay-panel" aria-labelledby="review-heading" hidden>
+      <div class="pixabay-section-head">
+        <div>
+          <h2 id="review-heading">Confirm import</h2>
+          <p id="review-copy"></p>
+        </div>
+      </div>
+      <div class="pixabay-review-grid">
+        <div class="pixabay-review-item"><span class="pixabay-label">Destination</span><strong>Elysium Library</strong></div>
+        <div class="pixabay-review-item"><span class="pixabay-label">Status</span><strong>Draft</strong></div>
+        <div class="pixabay-review-item"><span class="pixabay-label">Original</span><strong>Cloudflare R2</strong></div>
+        <div class="pixabay-review-item"><span class="pixabay-label">Previews</span><strong>AVIF + WebP</strong></div>
+      </div>
+      <div class="pixabay-filters">
+        <div class="pixabay-field" style="grid-column: span 2;">
+          <label for="default-category">Default Elysium category</label>
+          <select id="default-category" class="pixabay-select">
+            <option value="">Use safe mapping or leave unassigned</option>
+            {categories.map((category) => <option value={category.id}>{category.name}</option>)}
+          </select>
+        </div>
+        <div class="pixabay-field" style="grid-column: span 2;">
+          <label for="additional-tags">Additional tags</label>
+          <input id="additional-tags" class="pixabay-input" placeholder="curated, photography" maxlength="250" />
+        </div>
+      </div>
+      <p class="pixabay-note" style="margin-top: 1rem;">Publishing remains a separate review action. Confirm provenance and Pixabay license restrictions before publishing.</p>
+      <div class="pixabay-actions" style="justify-content: flex-end; margin-top: 1.25rem;">
+        <button id="cancel-review" class="pixabay-button" type="button">Cancel</button>
+        <button id="confirm-import" class="pixabay-button primary" type="button"></button>
+      </div>
+    </section>
+
+    <section id="queue-section" class="pixabay-panel" aria-labelledby="queue-heading" hidden>
+      <div class="pixabay-section-head">
+        <div>
+          <h2 id="queue-heading">Importing wallpapers</h2>
+          <p id="queue-progress-label">0 / 0 completed</p>
+        </div>
+      </div>
+      <div class="pixabay-progress" aria-hidden="true"><span id="queue-progress-bar"></span></div>
+      <div id="queue" class="pixabay-queue" aria-live="polite"></div>
+    </section>
+
+    <section id="summary-section" class="pixabay-panel" aria-labelledby="summary-heading" aria-live="polite" tabindex="-1" hidden>
+      <div class="pixabay-section-head">
+        <div><h2 id="summary-heading">Import complete</h2><p>The batch finished without allowing one failed image to stop the others.</p></div>
+      </div>
+      <div class="pixabay-summary-grid">
+        <div class="pixabay-summary-item"><span class="pixabay-label">Imported</span><strong id="summary-imported">0</strong></div>
+        <div class="pixabay-summary-item"><span class="pixabay-label">Duplicate</span><strong id="summary-duplicate">0</strong></div>
+        <div class="pixabay-summary-item"><span class="pixabay-label">Failed</span><strong id="summary-failed">0</strong></div>
+        <div class="pixabay-summary-item"><span class="pixabay-label">Total</span><strong id="summary-total">0</strong></div>
+      </div>
+      <div id="failure-list" class="pixabay-failures"></div>
+      <div class="pixabay-actions" style="justify-content: flex-end; margin-top: 1.25rem;">
+        <button id="retry-failed" class="pixabay-button" type="button" hidden>Retry failed</button>
+        <button id="import-more" class="pixabay-button" type="button">Import more</button>
+        <a class="pixabay-button primary" href="/admin/wallpapers?status=draft">View drafts</a>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    interface SearchImage {
+      pixabayId: number; previewUrl: string; sourceUrl: string; creator: string; tags: string[];
+      width: number; height: number; orientation: string; title: string; likes: number; views: number;
+    }
+    interface ImportItem { pixabayId: number; status: 'imported' | 'duplicate' | 'failed'; title?: string; reason?: string; }
+    interface ImportSummary { imported: number; duplicate: number; failed: number; total: number; items: ImportItem[]; }
+
+    function byId<T = HTMLElement>(id: string): T {
+      return document.getElementById(id) as unknown as T;
+    }
+    const searchForm = byId<HTMLFormElement>('search-form');
+    const results = byId<HTMLDivElement>('results');
+    const selected = new Map<number, SearchImage>();
+    let currentImages: SearchImage[] = [];
+    let currentPage = 1;
+    let totalHits = 0;
+    let failedIds: number[] = [];
+    const pageSize = 24;
+
+    let searchController: AbortController | undefined;
+    let searchVersion = 0;
+    let importActive = false;
+
+    function scrollToElement(element: HTMLElement): void {
+      element.scrollIntoView({
+        behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'start',
+      });
+    }
+
+    function message(className: string, text: string): HTMLDivElement {
+      const element = document.createElement('div');
+      element.className = className;
+      element.style.gridColumn = '1 / -1';
+      element.textContent = text;
+      return element;
+    }
+
+    function validatedPreviewUrl(value: string): string | null {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'https:' && (url.hostname === 'pixabay.com' || url.hostname.endsWith('.pixabay.com'))
+          ? url.href
+          : null;
+      } catch {
+        return null;
+      }
+    }
+
+    async function showRetryCountdown(button: HTMLButtonElement | null, seconds: number, signal: AbortSignal): Promise<void> {
+      if (!button) return;
+      const original = button.textContent || 'Search';
+      for (let remaining = Math.min(300, seconds); remaining > 0 && !signal.aborted; remaining -= 1) {
+        button.textContent = `Retry in ${remaining}s`;
+        await new Promise((resolve) => window.setTimeout(resolve, 1000));
+      }
+      button.textContent = original;
+    }
+
+    function renderResults(): void {
+      if (!currentImages.length) {
+        results.replaceChildren(message('pixabay-empty', 'No wallpapers match these filters.'));
+        return;
+      }
+      const cards = currentImages.map((image) => {
+        const isSelected = selected.has(image.pixabayId);
+        const card = document.createElement('button');
+        card.className = `pixabay-card${isSelected ? ' selected' : ''}`;
+        card.type = 'button';
+        card.dataset.imageId = String(image.pixabayId);
+        card.setAttribute('aria-pressed', String(isSelected));
+        const previewUrl = validatedPreviewUrl(image.previewUrl);
+        if (previewUrl) {
+          const img = document.createElement('img');
+          img.src = previewUrl; img.alt = `${image.title} by ${image.creator}`;
+          img.width = image.width; img.height = image.height; img.loading = 'lazy'; img.decoding = 'async';
+          card.appendChild(img);
+        }
+        const check = document.createElement('span');
+        check.className = 'pixabay-card-check'; check.ariaHidden = 'true'; check.textContent = '✓';
+        const body = document.createElement('span'); body.className = 'pixabay-card-body';
+        const values = [
+          ['pixabay-card-title', image.title],
+          ['pixabay-card-meta', `${image.width} × ${image.height} · ${image.orientation} · #${image.pixabayId}`],
+          ['pixabay-card-tags', image.tags.join(', ')],
+          ['pixabay-card-meta', `by ${image.creator} · ${image.views.toLocaleString()} views`],
+        ];
+        for (const [className, text] of values) {
+          const span = document.createElement('span'); span.className = className; span.textContent = text; body.appendChild(span);
+        }
+        card.appendChild(check); card.appendChild(body);
+        return card;
+      });
+      results.replaceChildren(...cards);
+    }
+
+    function updateSelection(): void {
+      const count = selected.size;
+      byId('selection-bar').hidden = count === 0;
+      byId('selection-count').textContent = `Selected: ${count} wallpaper${count === 1 ? '' : 's'}`;
+      byId<HTMLButtonElement>('review-selection').disabled = count === 0;
+      renderResults();
+    }
+
+    async function runSearch(page = 1): Promise<void> {
+      searchController?.abort();
+      const controller = new AbortController();
+      searchController = controller;
+      const version = ++searchVersion;
+      currentPage = page;
+      results.replaceChildren(message('pixabay-empty', 'Loading search results…'));
+      const searchButton = searchForm.querySelector<HTMLButtonElement>('button[type="submit"]');
+      if (searchButton) searchButton.disabled = true;
+      const [minWidth, minHeight] = byId<HTMLSelectElement>('resolution').value.split(',');
+      const params = new URLSearchParams({
+        q: byId<HTMLInputElement>('query').value.trim(),
+        orientation: byId<HTMLSelectElement>('orientation').value,
+        order: byId<HTMLSelectElement>('order').value,
+        min_width: minWidth,
+        min_height: minHeight,
+        page: String(page),
+        per_page: String(pageSize),
+      });
+      const category = byId<HTMLSelectElement>('category').value;
+      if (category) params.set('category', category);
+      try {
+        const response = await fetch(`/api/admin/pixabay/search?${params}`, { signal: controller.signal });
+        const payload = await response.json() as { success: boolean; data?: { images: SearchImage[]; totalHits: number }; error?: string };
+        if (response.status === 401) { window.location.assign('/admin/login'); return; }
+        if (response.status === 429) {
+          const retryAfter = Math.max(1, Number(response.headers.get('retry-after')) || 60);
+          await showRetryCountdown(searchButton, retryAfter, controller.signal);
+          throw new Error(`Search rate limited. Retry in ${retryAfter} seconds.`);
+        }
+        if (!response.ok || !payload.success || !payload.data) throw new Error(payload.error || 'Search failed');
+        if (version !== searchVersion) return;
+        currentImages = payload.data.images;
+        totalHits = payload.data.totalHits;
+        byId('results-heading').hidden = false;
+        byId('results-count').textContent = `${totalHits.toLocaleString()} accessible results. Showing page ${currentPage}.`;
+        const totalPages = Math.min(500, Math.max(1, Math.ceil(totalHits / pageSize)));
+        byId('pagination').hidden = totalHits <= pageSize;
+        byId('page-label').textContent = `Page ${currentPage} of ${totalPages}`;
+        byId<HTMLButtonElement>('previous-page').disabled = currentPage <= 1;
+        byId<HTMLButtonElement>('next-page').disabled = currentPage >= totalPages;
+        renderResults();
+      } catch (error) {
+        if (controller.signal.aborted || version !== searchVersion) return;
+        currentImages = [];
+        results.replaceChildren(message('pixabay-error', error instanceof Error ? error.message : 'Search failed'));
+      } finally {
+        if (version === searchVersion && searchButton) searchButton.disabled = false;
+      }
+    }
+
+    function renderQueue(ids: number[]): void {
+      const rows = ids.map((id) => {
+        const image = selected.get(id);
+        const row = document.createElement('div'); row.className = 'pixabay-queue-row'; row.dataset.queueId = String(id);
+        const name = document.createElement('span'); name.className = 'pixabay-queue-name'; name.textContent = image?.title || `Image #${id}`;
+        const status = document.createElement('span'); status.className = 'pixabay-status waiting'; status.textContent = 'Waiting';
+        row.appendChild(name); row.appendChild(status); return row;
+      });
+      byId('queue').replaceChildren(...rows);
+    }
+
+    function updateQueueItem(item: ImportItem): void {
+      const row = document.querySelector(`[data-queue-id="${item.pixabayId}"]`);
+      const status = row?.querySelector('.pixabay-status');
+      if (!status) return;
+      status.className = `pixabay-status ${item.status}`;
+      status.textContent = item.status === 'imported' ? '✓ Imported' : item.status === 'duplicate' ? '⚠ Duplicate' : `✕ ${item.reason || 'Failed'}`;
+    }
+
+    async function startImport(ids: number[]): Promise<void> {
+      if (importActive) return;
+      importActive = true;
+      byId<HTMLButtonElement>('confirm-import').disabled = true;
+      byId<HTMLButtonElement>('retry-failed').disabled = true;
+      byId('review-section').hidden = true;
+      byId('summary-section').hidden = true;
+      byId('queue-section').hidden = false;
+      renderQueue(ids);
+      document.querySelectorAll('.pixabay-status.waiting').forEach((node, index) => {
+        if (index < 2) { node.className = 'pixabay-status processing'; node.textContent = '→ Processing'; }
+      });
+      const tags = byId<HTMLInputElement>('additional-tags').value.split(',').map((tag) => tag.trim()).filter(Boolean);
+      const response = await fetch('/api/admin/pixabay/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/x-ndjson' },
+        body: JSON.stringify({
+          images: ids.map((pixabayId) => ({ pixabayId })),
+          settings: {
+            defaultCategoryId: byId<HTMLSelectElement>('default-category').value || undefined,
+            sourceCategory: byId<HTMLSelectElement>('category').value || undefined,
+            additionalTags: tags,
+          },
+        }),
+      });
+      if (!response.ok || !response.body) {
+        if (response.status === 401) { window.location.assign('/admin/login'); return; }
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error || (response.status === 429 ? 'Import rate limited. Try again shortly.' : 'Import request failed'));
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let completed = 0;
+      let summary: ImportSummary | undefined;
+      while (true) {
+        const { value, done } = await reader.read();
+        buffer += decoder.decode(value, { stream: !done });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines.filter(Boolean)) {
+          const event = JSON.parse(line) as { type: 'item' | 'complete'; item?: ImportItem; result?: ImportSummary };
+          if (event.type === 'item' && event.item) {
+            completed += 1;
+            updateQueueItem(event.item);
+            byId('queue-progress-label').textContent = `${completed} / ${ids.length} completed`;
+            byId('queue-progress-bar').style.width = `${Math.round((completed / ids.length) * 100)}%`;
+            const next = document.querySelector('.pixabay-status.waiting');
+            if (next) { next.className = 'pixabay-status processing'; next.textContent = '→ Processing'; }
+          }
+          if (event.type === 'complete' && event.result) summary = event.result;
+        }
+        if (done) break;
+      }
+      if (!summary) throw new Error('Import stream ended before completion');
+      showSummary(summary);
+      importActive = false;
+      byId<HTMLButtonElement>('confirm-import').disabled = false;
+      byId<HTMLButtonElement>('retry-failed').disabled = false;
+    }
+
+    function showSummary(summary: ImportSummary): void {
+      failedIds = summary.items.filter((item) => item.status === 'failed').map((item) => item.pixabayId);
+      byId('summary-imported').textContent = String(summary.imported);
+      byId('summary-duplicate').textContent = String(summary.duplicate);
+      byId('summary-failed').textContent = String(summary.failed);
+      byId('summary-total').textContent = String(summary.total);
+      const failures = summary.items.filter((item) => item.status === 'failed').map((item) => {
+        const line = document.createElement('p');
+        line.textContent = `Image #${item.pixabayId}: ${item.reason || 'Unknown error'}`;
+        return line;
+      });
+      byId('failure-list').replaceChildren(...failures);
+      byId<HTMLButtonElement>('retry-failed').hidden = failedIds.length === 0;
+      byId('summary-section').hidden = false;
+      scrollToElement(byId('summary-section'));
+      byId('summary-section').focus({ preventScroll: true });
+    }
+
+    searchForm.addEventListener('submit', (event) => { event.preventDefault(); void runSearch(1); });
+    results.addEventListener('click', (event) => {
+      const card = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-image-id]');
+      if (!card) return;
+      const id = Number(card.dataset.imageId);
+      if (selected.has(id)) selected.delete(id);
+      else {
+        const image = currentImages.find((candidate) => candidate.pixabayId === id);
+        if (image) selected.set(id, image);
+      }
+      updateSelection();
+    });
+    byId('clear-selection').addEventListener('click', () => { selected.clear(); updateSelection(); });
+    byId('previous-page').addEventListener('click', () => void runSearch(currentPage - 1));
+    byId('next-page').addEventListener('click', () => void runSearch(currentPage + 1));
+    byId('review-selection').addEventListener('click', () => {
+      byId('review-copy').textContent = `Import ${selected.size} selected wallpaper${selected.size === 1 ? '' : 's'}?`;
+      byId('confirm-import').textContent = `Import ${selected.size} wallpaper${selected.size === 1 ? '' : 's'}`;
+      byId('review-section').hidden = false;
+      scrollToElement(byId('review-section'));
+    });
+    byId('cancel-review').addEventListener('click', () => { byId('review-section').hidden = true; });
+    byId('confirm-import').addEventListener('click', () => {
+      const ids = [...selected.keys()];
+      byId<HTMLButtonElement>('confirm-import').disabled = true;
+      void startImport(ids).catch((error) => {
+        importActive = false;
+        byId('queue-progress-label').textContent = error instanceof Error ? error.message : 'Import failed';
+        byId<HTMLButtonElement>('confirm-import').disabled = false;
+        byId<HTMLButtonElement>('retry-failed').disabled = false;
+      });
+    });
+    byId('retry-failed').addEventListener('click', () => { if (failedIds.length) void startImport(failedIds); });
+    byId('import-more').addEventListener('click', () => {
+      selected.clear(); failedIds = []; updateSelection();
+      byId('review-section').hidden = true; byId('queue-section').hidden = true; byId('summary-section').hidden = true;
+      byId<HTMLButtonElement>('confirm-import').disabled = false;
+      scrollToElement(byId('search-section'));
+    });
+    window.addEventListener('beforeunload', (event) => {
+      if (!importActive) return;
+      event.preventDefault();
+      (event as unknown as { returnValue: string }).returnValue = '';
+    });
+  </script>
+</AdminLayout>

@@ -1,0 +1,243 @@
+---
+import { env } from 'cloudflare:workers';
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { DBService } from '@worker/services/db.service';
+import type { Wallpaper, WallpaperStatus } from '@/types';
+
+const db = env.DB;
+const statusParam = Astro.url.searchParams.get('status');
+const status = ['draft', 'published', 'archived'].includes(statusParam || '')
+  ? statusParam as WallpaperStatus
+  : undefined;
+let wallpapers: Wallpaper[] = [];
+let total = 0;
+let categories: Awaited<ReturnType<typeof DBService.getCategories>> = [];
+let tags: Awaited<ReturnType<typeof DBService.getTags>> = [];
+
+if (db) {
+  try {
+    const [result, categoryRows, tagRows] = await Promise.all([
+      DBService.listWallpapers(db, { limit: 50, page: 1, sortBy: 'newest', status }),
+      DBService.getCategories(db),
+      DBService.getTags(db),
+    ]);
+    wallpapers = result.wallpapers;
+    total = result.total;
+    categories = categoryRows;
+    tags = tagRows;
+  } catch (error) {
+    console.error('Failed to load wallpapers:', error);
+  }
+}
+---
+
+<AdminLayout title="Manage Wallpapers | Admin" activeTab="wallpapers">
+  <div class="catalog-head">
+    <div>
+      <h1>Wallpaper Catalog</h1>
+      <p>{total} {status ? status : 'total'} wallpaper entries.</p>
+    </div>
+    <details class="add-menu">
+      <summary>+ Add Wallpaper</summary>
+      <div class="add-menu-items">
+        <a href="/admin/wallpapers/new"><strong>Upload Single</strong><span>One local master file</span></a>
+        <a href="/admin/wallpapers/bulk"><strong>Bulk Import</strong><span>Multiple local files</span></a>
+        <a href="/admin/wallpapers/import/pixabay"><strong>Import from Pixabay</strong><span>Search and curate drafts</span></a>
+        <a href="/admin/wallpapers/import/pinterest"><strong>Pinterest Curator</strong><span>Bookmarklet & URL import</span></a>
+      </div>
+    </details>
+  </div>
+
+  <nav class="status-tabs" aria-label="Wallpaper status">
+    <a class={!status ? 'active' : ''} href="/admin/wallpapers">All</a>
+    <a class={status === 'draft' ? 'active' : ''} href="/admin/wallpapers?status=draft">Drafts</a>
+    <a class={status === 'published' ? 'active' : ''} href="/admin/wallpapers?status=published">Published</a>
+    <a class={status === 'archived' ? 'active' : ''} href="/admin/wallpapers?status=archived">Archived</a>
+  </nav>
+
+  <section id="bulk-toolbar" class="bulk-toolbar" hidden aria-label="Bulk actions">
+    <strong id="selected-count">Selected: 0</strong>
+    <div class="bulk-controls">
+      <button class="toolbar-button" data-action="publish" type="button">Publish</button>
+      <select id="bulk-category" aria-label="Category for selected wallpapers">
+        <option value="">No category</option>
+        {categories.map((category) => <option value={category.id}>{category.name}</option>)}
+      </select>
+      <button class="toolbar-button" data-action="set_category" type="button">Set Category</button>
+      <select id="bulk-tag" aria-label="Tag for selected wallpapers">
+        <option value="">Choose tag</option>
+        {tags.map((tag) => <option value={tag.id}>{tag.name}</option>)}
+      </select>
+      <button class="toolbar-button" data-action="add_tag" type="button">Add Tag</button>
+      <button class="toolbar-button" data-action="remove_tag" type="button">Remove Tag</button>
+      <button class="toolbar-button danger" data-action="delete" type="button">Delete</button>
+    </div>
+  </section>
+  <div id="bulk-result" role="status" aria-live="polite" tabindex="-1" hidden class="bulk-result"></div>
+
+  <section class="catalog-panel">
+    {wallpapers.length === 0 ? (
+      <div class="empty-state">
+        <h2>No {status || ''} wallpapers found</h2>
+        <p>Import or upload an asset, then review its metadata here.</p>
+        <a href="/admin/wallpapers/import/pixabay">Import from Pixabay</a>
+      </div>
+    ) : (
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th class="check-cell"><input id="select-all" type="checkbox" aria-label="Select all wallpapers" /></th>
+              <th>Wallpaper</th>
+              <th>Dimensions</th>
+              <th>Source</th>
+              <th>Status</th>
+              <th>Downloads</th>
+              <th class="actions-cell">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {wallpapers.map((wallpaper) => (
+              <tr>
+                <td class="check-cell"><input class="row-check" type="checkbox" value={wallpaper.id} aria-label={`Select ${wallpaper.title}`} /></td>
+                <td>
+                  <strong>{wallpaper.title}</strong>
+                  <small>{wallpaper.slug}</small>
+                </td>
+                <td>
+                  {wallpaper.width} × {wallpaper.height}
+                  <small>{wallpaper.orientation} · {wallpaper.resolutionLabel || 'Custom'}</small>
+                </td>
+                <td>
+                  {wallpaper.sourceProvider ? <strong class="source-name">{wallpaper.sourceProvider}</strong> : <span>Manual upload</span>}
+                  {wallpaper.sourceExternalId && <small>#{wallpaper.sourceExternalId} · {wallpaper.creator || 'Unknown creator'}</small>}
+                </td>
+                <td><span class={`status-badge ${wallpaper.status}`}>{wallpaper.status}</span></td>
+                <td>{wallpaper.downloadCount}</td>
+                <td class="actions-cell">
+                  <a href={`/admin/wallpapers/${wallpaper.id}/edit`}>Review</a>
+                  <button data-delete-id={wallpaper.id} class="delete-one" type="button">Delete</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </section>
+
+  <style>
+    .catalog-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-bottom:1.25rem; }
+    .catalog-head h1 { font-family:var(--font-heading); font-size:2rem; line-height:1.2; }
+    .catalog-head p { color:var(--text-secondary); margin-top:.3rem; }
+    .add-menu { position:relative; }
+    .add-menu summary { list-style:none; cursor:pointer; padding:.75rem 1rem; border-radius:var(--radius-sm); background:var(--accent-primary); color:#f7f7ff; font-weight:700; }
+    .add-menu summary::-webkit-details-marker { display:none; }
+    .add-menu-items { position:absolute; right:0; top:calc(100% + .5rem); z-index:30; width:260px; padding:.45rem; border:1px solid var(--border-medium); border-radius:var(--radius-md); background:var(--bg-surface-elevated); box-shadow:0 18px 38px rgba(0,0,0,.35); }
+    .add-menu-items a { display:grid; gap:.15rem; padding:.75rem; border-radius:var(--radius-sm); }
+    .add-menu-items a:hover, .add-menu-items a:focus-visible { background:var(--accent-glow); outline:none; }
+    .add-menu-items span { color:var(--text-secondary); font-size:.78rem; }
+    .status-tabs { display:flex; gap:.4rem; margin-bottom:1rem; }
+    .status-tabs a { padding:.55rem .8rem; color:var(--text-secondary); border-radius:var(--radius-sm); font-size:.86rem; font-weight:700; }
+    .status-tabs a.active { color:var(--accent-primary); background:var(--accent-glow); }
+    .bulk-toolbar { position:sticky; top:80px; z-index:20; display:flex; align-items:center; justify-content:space-between; gap:1rem; padding:.8rem 1rem; margin-bottom:1rem; border:1px solid var(--border-medium); border-radius:var(--radius-md); background:var(--bg-surface-elevated); }
+    .bulk-result { margin-bottom:1rem; padding:1rem; border:1px solid var(--border-medium); border-radius:var(--radius-md); color:var(--text-secondary); }
+    .bulk-controls { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+    .bulk-controls select, .toolbar-button { min-height:38px; padding:.5rem .7rem; color:var(--text-primary); background:var(--bg-primary); border:1px solid var(--border-medium); border-radius:var(--radius-sm); font:inherit; font-size:.82rem; font-weight:700; }
+    .toolbar-button { cursor:pointer; }
+    .toolbar-button:hover { border-color:var(--accent-primary); }
+    .toolbar-button.danger, .delete-one { color:#fecaca; }
+    .catalog-panel { overflow:hidden; background:var(--bg-surface); border:1px solid var(--border-medium); border-radius:var(--radius-lg); }
+    .table-scroll { overflow-x:auto; }
+    table { width:100%; border-collapse:collapse; text-align:left; font-size:.88rem; }
+    th { padding:.8rem 1rem; color:var(--text-secondary); border-bottom:1px solid var(--border-subtle); font-size:.76rem; text-transform:uppercase; letter-spacing:.04em; }
+    td { padding:1rem; color:var(--text-secondary); border-bottom:1px solid var(--border-subtle); vertical-align:middle; }
+    tbody tr:last-child td { border-bottom:0; }
+    td strong { display:block; color:var(--text-primary); }
+    td small { display:block; margin-top:.25rem; color:var(--text-muted); }
+    .check-cell { width:42px; padding-right:0; }
+    input[type='checkbox'] { width:17px; height:17px; accent-color:var(--accent-primary); }
+    .source-name { text-transform:capitalize; }
+    .status-badge { display:inline-flex; padding:.25rem .55rem; border-radius:var(--radius-full); font-size:.74rem; font-weight:750; text-transform:capitalize; }
+    .status-badge.published { color:#86efac; background:rgba(34,197,94,.16); }
+    .status-badge.draft { color:#fde68a; background:rgba(234,179,8,.15); }
+    .status-badge.archived { color:#cbd5e1; background:rgba(148,163,184,.14); }
+    .actions-cell { text-align:right; white-space:nowrap; }
+    .actions-cell a { color:var(--accent-primary); font-weight:700; }
+    .delete-one { margin-left:.7rem; background:none; border:0; cursor:pointer; font:inherit; font-weight:700; }
+    .empty-state { padding:4rem 1rem; text-align:center; }
+    .empty-state p { margin:.5rem 0 1rem; color:var(--text-secondary); }
+    .empty-state a { color:var(--accent-primary); font-weight:700; }
+    @media(max-width:850px){ .catalog-head,.bulk-toolbar{align-items:stretch;flex-direction:column}.add-menu-items{left:0;right:auto}.bulk-toolbar{position:static}.status-tabs{overflow-x:auto}.actions-cell{white-space:normal} }
+  </style>
+
+  <script>
+    type BulkAction = 'publish' | 'set_category' | 'add_tag' | 'remove_tag' | 'delete';
+    const checks = [...document.querySelectorAll<HTMLInputElement>('.row-check')];
+    const selectAll = document.getElementById('select-all') as HTMLInputElement | null;
+    const toolbar = document.getElementById('bulk-toolbar') as HTMLElement;
+    const countLabel = document.getElementById('selected-count') as HTMLElement;
+    const selectedIds = () => checks.filter((check) => check.checked).map((check) => check.value);
+
+    function refreshSelection(): void {
+      const ids = selectedIds();
+      toolbar.hidden = ids.length === 0;
+      countLabel.textContent = `Selected: ${ids.length}`;
+      if (selectAll) {
+        selectAll.checked = ids.length === checks.length && checks.length > 0;
+        selectAll.indeterminate = ids.length > 0 && ids.length < checks.length;
+      }
+    }
+
+    async function runAction(action: BulkAction): Promise<void> {
+      const ids = selectedIds();
+      if (!ids.length) return;
+      let value: string | undefined;
+      if (action === 'set_category') value = (document.getElementById('bulk-category') as unknown as HTMLSelectElement).value;
+      if (action === 'add_tag' || action === 'remove_tag') {
+        value = (document.getElementById('bulk-tag') as unknown as HTMLSelectElement).value;
+        if (!value) { alert('Choose a tag first.'); return; }
+      }
+      if (action === 'delete' && !confirm(`Delete ${ids.length} selected wallpapers and their R2 assets?`)) return;
+      const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-action]')];
+      buttons.forEach((button) => { button.disabled = true; });
+      try {
+        const response = await fetch('/api/admin/wallpapers/actions', {
+          method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ wallpaperIds:ids, action, value })
+        });
+        if (response.status === 401) { window.location.assign('/admin/login'); return; }
+        const result = await response.json() as {
+          success?:boolean; error?:string; updated?:number; failed?:number;
+          items?:Array<{id:string;success:boolean;error?:string}>;
+        };
+        if (!response.ok || !result.items) { alert(result.error || 'Bulk action failed'); return; }
+        if (!result.failed) { window.location.reload(); return; }
+        const failures = result.items.filter((item) => !item.success);
+        const failureIds = new Set(failures.map((item) => item.id));
+        checks.forEach((check) => { check.checked = failureIds.has(check.value); });
+        refreshSelection();
+        const summary = document.getElementById('bulk-result') as HTMLDivElement;
+        summary.hidden = false;
+        summary.textContent = `${result.updated || 0} updated; ${result.failed} failed. ${failures.map((item) => `${item.id}: ${item.error || 'Failed'}`).join(' · ')}`;
+        summary.focus();
+      } finally {
+        buttons.forEach((button) => { button.disabled = false; });
+      }
+    }
+
+    checks.forEach((check) => check.addEventListener('change', refreshSelection));
+    selectAll?.addEventListener('change', () => { checks.forEach((check) => { check.checked = selectAll.checked; }); refreshSelection(); });
+    document.querySelectorAll<HTMLButtonElement>('[data-action]').forEach((button) => {
+      button.addEventListener('click', () => void runAction(button.dataset.action as BulkAction));
+    });
+    document.querySelectorAll<HTMLButtonElement>('.delete-one').forEach((button) => {
+      button.addEventListener('click', async () => {
+        const id = button.dataset.deleteId;
+        if (!id || !confirm('Delete this wallpaper and all associated R2 assets?')) return;
+        const response = await fetch(`/api/admin/wallpapers/${id}`, { method:'DELETE' });
+        const result = await response.json() as { success?:boolean; error?:string };
+        if (response.ok && result.success) window.location.reload(); else alert(result.error || 'Delete failed');
+      });
+    });
+  </script>
+</AdminLayout>
