@@ -202,7 +202,7 @@ function retryDelay(response, attempt) {
   return Math.min(15_000, 800 * 2 ** attempt);
 }
 
-async function fetchWithRetry(url, init = {}, attempts = 4) {
+async function fetchWithRetry(url, init = {}, attempts = 10) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     let response;
@@ -506,7 +506,7 @@ async function downloadCandidate(candidate) {
 }
 
 async function uploadCandidate(baseUrl, session, category, candidate) {
-  await delay(600);
+  await delay(700);
   const bytes = await downloadCandidate(candidate);
   const extension = candidate.mimeType === 'image/jpeg' ? 'jpg' : candidate.mimeType.split('/')[1];
   const form = new FormData();
