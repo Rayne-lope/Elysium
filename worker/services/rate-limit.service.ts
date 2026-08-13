@@ -46,21 +46,33 @@ export class RateLimitService {
     const now = Math.floor(Date.now() / 1000);
     const resetBefore = now - rule.windowSeconds;
     const keyHash = await identityHash(scope, identity, secret);
-    const row = await db.prepare(`
-      INSERT INTO api_rate_limits (scope, key_hash, window_started_at, request_count)
-      VALUES (?, ?, ?, 1)
-      ON CONFLICT(scope, key_hash) DO UPDATE SET
-        window_started_at = CASE WHEN window_started_at <= ? THEN excluded.window_started_at ELSE window_started_at END,
-        request_count = CASE WHEN window_started_at <= ? THEN 1 ELSE request_count + 1 END
-      RETURNING request_count, window_started_at
-    `).bind(scope, keyHash, now, resetBefore, resetBefore).first<RateLimitRow>();
+    
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        const row = await db.prepare(`
+          INSERT INTO api_rate_limits (scope, key_hash, window_started_at, request_count)
+          VALUES (?, ?, ?, 1)
+          ON CONFLICT(scope, key_hash) DO UPDATE SET
+            window_started_at = CASE WHEN window_started_at <= ? THEN excluded.window_started_at ELSE window_started_at END,
+            request_count = CASE WHEN window_started_at <= ? THEN 1 ELSE request_count + 1 END
+          RETURNING request_count, window_started_at
+        `).bind(scope, keyHash, now, resetBefore, resetBefore).first<RateLimitRow>();
 
-    if (!row) throw new Error('Rate limiter did not return a counter');
-    const retryAfter = Math.max(1, row.window_started_at + rule.windowSeconds - now);
-    return {
-      allowed: row.request_count <= rule.limit,
-      remaining: Math.max(0, rule.limit - row.request_count),
-      retryAfter,
-    };
+        if (!row) throw new Error('Rate limiter did not return a counter');
+        const retryAfter = Math.max(1, row.window_started_at + rule.windowSeconds - now);
+        return {
+          allowed: row.request_count <= rule.limit,
+          remaining: Math.max(0, rule.limit - row.request_count),
+          retryAfter,
+        };
+      } catch (err) {
+        lastError = err;
+        await new Promise((resolve) => setTimeout(resolve, 150 * (attempt + 1)));
+      }
+    }
+
+    console.warn(`Rate limiter fallback allowed for scope ${scope}: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
+    return { allowed: true, remaining: 1, retryAfter: 1 };
   }
 }
